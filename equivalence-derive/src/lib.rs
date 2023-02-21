@@ -2,7 +2,7 @@ use std::{borrow::Cow, collections::HashMap};
 
 use darling::{
     ast::Data,
-    util::{Flag, SpannedValue},
+    util::{Flag, SpannedValue, Override},
     FromDeriveInput, FromField, FromMeta, FromVariant, ToTokens,
 };
 use proc_macro::{self, TokenStream};
@@ -26,6 +26,7 @@ use derivation::*;
 pub(crate) struct EquivalenceOpts {
     #[darling(multiple)]
     rel: Vec<SpannedValue<RelOpts>>,
+    //TODO: this is inconsistent wityh the `full` option in RelOpts and FwdOpts. Fix this.
     full: Option<SpannedValue<SetFlag>>,
     partial_eq: Option<WhereFlag>,
     eq: Option<WhereFlag>,
@@ -103,34 +104,14 @@ impl FromMeta for RelOpts {
 struct FwdOptsInner {
     name: Option<String>,
     full: Flag,
-    eq: Flag,
-    partial_ord: Flag,
-    ord: Flag,
-    hash: Flag,
+    eq: Option<Override<FwdMethod>>,
+    partial_ord: Option<Override<FwdMethod>>,
+    ord: Option<Override<FwdMethod>>,
+    hash: Option<Override<FwdMethod>>,
     map: Option<Expr>,
-    map_eq: Option<Expr>,
-    map_partial_cmp: Option<Expr>,
-    map_cmp: Option<Expr>,
-    map_hash: Option<Expr>,
-    eq_with: Option<Expr>,
-    cmp_with: Option<Expr>,
-    partial_cmp_with: Option<Expr>,
-    hash_with: Option<Expr>,
     ignore: Flag,
     delegate: Flag,
     rec: Flag,
-    ignore_eq: Flag,
-    delegate_eq: Flag,
-    rec_eq: Flag,
-    ignore_partial_ord: Flag,
-    delegate_partial_ord: Flag,
-    rec_partial_ord: Flag,
-    ignore_ord: Flag,
-    delegate_ord: Flag,
-    rec_ord: Flag,
-    ignore_hash: Flag,
-    delegate_hash: Flag,
-    rec_hash: Flag,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -145,12 +126,12 @@ impl FromMeta for FwdOpts {
         FwdOptsInner::from_list(items).map(FwdOpts)
     }
 
-    fn from_string(value: &str) -> darling::Result<Self> {
-        Ok(FwdOpts(FwdOptsInner {
-            name: Some(value.into()),
-            ..Default::default()
-        }))
-    }
+    // fn from_string(value: &str) -> darling::Result<Self> {
+    //     Ok(FwdOpts(FwdOptsInner {
+    //         name: Some(value.into()),
+    //         ..Default::default()
+    //     }))
+    // }
 
     // fn from_bool(value: bool) -> darling::Result<Self> {
     //     Ok(FwdOpts(FwdOptsInner {

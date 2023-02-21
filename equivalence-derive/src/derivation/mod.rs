@@ -210,173 +210,115 @@ impl FwdDesc {
 
 impl FwdOptsInner {
     pub(crate) fn parse_to_desc(self) -> FwdDesc {
-        let full = self.full.is_present();
-        let eq_set = self.eq.is_present();
-        let partial_ord_set = self.partial_ord.is_present();
-        let ord_set = self.ord.is_present();
-        let hash_set = self.hash.is_present();
-        let anyone_set = eq_set || partial_ord_set || ord_set || hash_set;
-        if anyone_set && full {
-            emit_warning!(self.full.span(), "if `full` flag is set to `true`, setting other `equiv` flags to `true` is redundant")
-        }
-        let set_all = full | !anyone_set;
+        let has_specification = self.eq.is_some()
+            || self.partial_ord.is_some()
+            || self.ord.is_some()
+            || self.hash.is_some();
 
-        if self.ignore.is_present() {
-            if self.delegate.is_present() || self.rec.is_present() {
+        let has_specific_method = matches!(self.eq, Some(Override::Explicit(_)))
+            || matches!(self.partial_ord, Some(Override::Explicit(_)))
+            || matches!(self.ord, Some(Override::Explicit(_)))
+            || matches!(self.hash, Some(Override::Explicit(_)));
+
+        let all_specified = matches!(self.eq, Some(Override::Explicit(_)))
+            && matches!(self.partial_ord, Some(Override::Explicit(_)))
+            && matches!(self.ord, Some(Override::Explicit(_)))
+            && matches!(self.hash, Some(Override::Explicit(_)));
+
+        let override_method = if let Some(map) = self.map {
+            if self.ignore.is_present() {
                 abort!(
-                    self.ignore.span(),
-                    "`ignore` flag contradicts `delegate` and `rec` flags"
+                    map.span(),
+                    "`map` specification conflicts with `ignore` flag"
                 )
             }
+            let map_span = map.span();
+            let result = if self.rec.is_present() {
+                if self.delegate.is_present() {
+                    abort!(
+                        self.delegate.span(),
+                        "`delegate` flag conflicts with `rec` flag"
+                    )
+                }
+                FwdMethod::MapRec(map)
+            } else {
+                FwdMethod::Map(map)
+            };
+            if all_specified {
+                emit_warning!(map_span, "`map` specification redundant since forwarding is specified for all Equivalence traits");
+            }
+            result
+        } else if self.ignore.is_present() {
+            if self.delegate.is_present() {
+                abort!(
+                    self.ignore.span(),
+                    "`ignore` flag conflicts with `delegate` flag"
+                )
+            }
+            if self.rec.is_present() {
+                abort!(
+                    self.ignore.span(),
+                    "`ignore` flag conflicts with `delegate` flag"
+                )
+            }
+            if all_specified {
+                emit_warning!(self.ignore.span(), "`ignore` flag redundant since forwarding is specified for all Equivalence traits");
+            }
+            FwdMethod::Ignore
         } else if self.delegate.is_present() {
             if self.rec.is_present() {
                 abort!(
                     self.delegate.span(),
-                    "`delegate` flag contradicts `rec` flag"
+                    "`delegate` flag conflicts with `rec` flag"
                 )
             }
-        }
-
-        let compute_method = |with_fn,
-                              map,
-                              ignore: &Flag,
-                              delegate: &Flag,
-                              rec: &Flag,
-                              with_fn_name: &str,
-                              map_fn_name: &str,
-                              ignore_name: &str,
-                              delegate_name: &str| {
-            let mut has_spec = true;
-            let result = match (
-                with_fn,
-                map,
-                ignore.is_present(),
-                delegate.is_present(),
-                rec.is_present(),
-            ) {
-                (Some(eq_with), None, false, false, false) => Some(FwdMethod::WithFn(eq_with)),
-                (None, Some(map_eq), false, false, rec) => {
-                    if rec || self.rec.is_present() {
-                        Some(FwdMethod::MapRec(map_eq))
-                    } else {
-                        Some(FwdMethod::Map(map_eq))
-                    }
-                }
-                (None, Some(map_eq), false, true, false) => Some(FwdMethod::Map(map_eq)),
-                (None, None, true, false, false) => Some(FwdMethod::Ignore),
-                (None, None, false, true, false) => {
-                    if let Some(map) = &self.map {
-                        Some(FwdMethod::Map(map.clone()))
-                    } else {
-                        Some(FwdMethod::Delegate)
-                    }
-                }
-                (None, None, false, false, true) => {
-                    if let Some(map) = &self.map {
-                        Some(FwdMethod::MapRec(map.clone()))
-                    } else {
-                        Some(FwdMethod::Rec)
-                    }
-                }
-                (None, None, false, false, false) => {
-                    if let Some(map) = &self.map {
-                        if self.rec.is_present() {
-                            Some(FwdMethod::MapRec(map.clone()))
-                        } else {
-                            Some(FwdMethod::Map(map.clone()))
-                        }
-                    } else {
-                        if set_all || eq_set {
-                            has_spec = eq_set;
-                            if self.ignore.is_present() {
-                                Some(FwdMethod::Ignore)
-                            } else if self.delegate.is_present() {
-                                Some(FwdMethod::Delegate)
-                            } else {
-                                Some(FwdMethod::Rec)
-                            }
-                        } else {
-                            None
-                        }
-                    }
-                }
-                (Some(x), _, _, _, _) => abort!(
-                    x.span(),
-                    "{} contradicts later directives for PartialEqWith derivation",
-                    with_fn_name
-                ),
-                (_, Some(x), _, _, _) => abort!(
-                    x.span(),
-                    "{} contradicts later directives for PartialEqWith derivation",
-                    map_fn_name
-                ),
-                (_, _, true, _, _) => abort!(
-                    ignore.span(),
-                    "{} contradicts later directives for PartialEqWith derivation",
-                    ignore_name
-                ),
-                (_, _, _, true, _) => abort!(
-                    delegate.span(),
-                    "{} contradicts later directives for PartialEqWith derivation",
-                    delegate_name
-                ),
-            };
-            (has_spec, result)
+            if all_specified {
+                emit_warning!(self.delegate.span(), "`delegate` flag redundant since forwarding is specified for all Equivalence traits");
+            }
+            FwdMethod::Delegate
+        } else {
+            if all_specified && self.rec.is_present() {
+                emit_warning!(
+                    self.ignore.span(),
+                    "`rec` flag redundant since forwarding is specified for all Equivalence traits"
+                );
+            }
+            FwdMethod::Rec
         };
 
-        let eq = compute_method(
-            self.eq_with,
-            self.map_eq,
-            &self.ignore_eq,
-            &self.delegate_eq,
-            &self.rec_eq,
-            "eq_with",
-            "map_eq",
-            "ignore_eq",
-            "delegate_eq",
-        )
-        .1;
-        let (_has_partial_cmp_spec, partial_cmp) = compute_method(
-            self.partial_cmp_with,
-            self.map_partial_cmp,
-            &self.ignore_partial_ord,
-            &self.delegate_partial_ord,
-            &self.rec_partial_ord,
-            "partial_cmp_with",
-            "map_partial_cmp",
-            "ignore_partial_ord",
-            "delegate_partial_ord",
-        );
-        //TODO: deal with this later...
-        // let partial_cmp = if has_partial_cmp_spec {
-        //     partial_cmp
-        // } else {
-        //     None
-        // };
-        let cmp = compute_method(
-            self.cmp_with,
-            self.map_cmp,
-            &self.ignore_ord,
-            &self.delegate_ord,
-            &self.rec_ord,
-            "cmp_with",
-            "map_cmp",
-            "ignore_ord",
-            "delegate_ord",
-        )
-        .1;
-        let hash = compute_method(
-            self.hash_with,
-            self.map_hash,
-            &self.ignore_hash,
-            &self.delegate_hash,
-            &self.rec_hash,
-            "hash_with",
-            "map_hash",
-            "ignore_hash",
-            "delegate_hash",
-        )
-        .1; //TODO: fix this
+        if self.full.is_present() && has_specification && !has_specific_method {
+            let info = if let Some(name) = &self.name {
+                format!("in forward block for {name:?}")
+            } else {
+                format!("in default forward block")
+            };
+            emit_call_site_warning!("flags `eq`, `partial_ord`, `ord`, `hash` are redundant if `full` flag is specified"; info = "{}", info);
+        }
+
+        let eq = match self.eq {
+            Some(Override::Explicit(eq)) => Some(eq),
+            None if has_specification => None,
+            _ => Some(override_method.clone()),
+        };
+
+        let partial_cmp = match self.partial_ord {
+            Some(Override::Explicit(partial_cmp)) => Some(partial_cmp),
+            None if has_specification => None,
+            _ => Some(override_method.clone()),
+        };
+
+        let cmp = match self.ord {
+            Some(Override::Explicit(cmp)) => Some(cmp),
+            None if has_specification => None,
+            _ => Some(override_method.clone()),
+        };
+
+        let hash = match self.hash {
+            Some(Override::Explicit(hash)) => Some(hash),
+            None if has_specification => None,
+            _ => Some(override_method.clone()),
+        };
+
         FwdDesc {
             eq,
             partial_cmp,
@@ -401,7 +343,7 @@ impl Fwds {
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-enum FwdMethod {
+pub(crate) enum FwdMethod {
     Ignore,
     #[default]
     Delegate,
@@ -409,4 +351,44 @@ enum FwdMethod {
     Map(Expr),
     MapRec(Expr),
     WithFn(Expr),
+}
+
+impl FromMeta for FwdMethod {
+    fn from_string(value: &str) -> darling::Result<Self> {
+        let mut tokens = value.split(" ");
+        if let Some(first) = tokens.next() {
+            //NOTE: this is a hack since `SplitWhitespace::as_str` is not yet stabilized
+            let rest = &value[first.len()..];
+            let any_left = tokens.next().is_some();
+            match first {
+                "map" => syn::parse_str::<Expr>(rest)
+                    .map(FwdMethod::Map)
+                    .map_err(|e| darling::Error::custom(format!("{e}"))),
+                "map_rec" => syn::parse_str::<Expr>(rest)
+                    .map(FwdMethod::MapRec)
+                    .map_err(|e| darling::Error::custom(format!("{e}"))),
+                "with" => syn::parse_str::<Expr>(rest)
+                    .map(FwdMethod::WithFn)
+                    .map_err(|e| darling::Error::custom(format!("{e}"))),
+                "ignore" if !any_left => Ok(FwdMethod::Ignore),
+                "delegate" if !any_left => Ok(FwdMethod::Delegate),
+                "rec" if !any_left => Ok(FwdMethod::Rec),
+                method => Err(darling::Error::custom(format!(
+                    "unsupported forwarding method {method:?}"
+                ))),
+            }
+        } else {
+            Err(darling::Error::custom(
+                "cannot parse FwdMethod from empty string",
+            ))
+        }
+    }
+
+    fn from_bool(value: bool) -> darling::Result<Self> {
+        if value {
+            Ok(FwdMethod::Rec)
+        } else {
+            Ok(FwdMethod::Delegate)
+        }
+    }
 }

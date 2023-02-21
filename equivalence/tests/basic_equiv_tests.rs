@@ -20,7 +20,7 @@ pub struct ModS {
 
 #[derive(Equivalence)]
 #[equiv(rel(name = "CtxA"))]
-#[equiv(rel = "CtxB")]
+#[equiv(rel(name = "CtxB"))]
 
 pub struct ModS2(
     u32,
