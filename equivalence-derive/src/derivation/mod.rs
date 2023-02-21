@@ -4,94 +4,85 @@ use super::*;
 
 mod synthesis;
 
-#[derive(Debug)]
-pub(crate) struct ContextDerivation {
-    ctx: Type,
-    this: Type,
-    ident: Ident,
-    traits: EquivalenceTraits,
-    data: Data<VariantDesc, FieldDesc>,
-    _generics: syn::Generics,
+#[derive(Debug, Clone)]
+pub(crate) struct EquivalenceDerivation {
+    pub(crate) rels: HashMap<String, RelDesc>,
+    // pub(crate) ctx: Option<Ident>,
+    pub(crate) base_fwds: Fwds,
+    pub(crate) data: Data<VariantOpts, FieldOpts>,
+    pub(crate) ident: Ident,
 }
 
-impl ContextDerivation {
-    /// Construct the derivation given a relation and a set of options, and an input span
-    pub(crate) fn construct_derivation(
-        rel: &RelOptsParser,
-        opts: &EquivalenceOptsParser,
-        base_traits: Option<&EquivalenceTraits>,
-        base_fwds: &Fwds,
-        rel_span: Span,
-    ) -> Result<ContextDerivation, darling::Error> {
-        let (name, ctx) = match (&rel.name, &rel.ty) {
-            (None, Some(ty)) => (format!("{:?}", ty), ty.clone()),
-            (Some(name), None) => match syn::parse_str::<Type>(name) {
-                Ok(ty) => (name.to_string(), ty),
-                Err(err) => abort!(
-                    name.span(),
-                    "no type specified, and name {:?} is not a valid type",
-                    **name;
-                    help = err
-                ),
-            },
-            (Some(name), Some(ty)) => (name.to_string(), ty.clone()),
-            (None, None) => abort!(
-                rel_span,
-                "one of relation name or relation type must be specified"
-            ),
-        };
+impl EquivalenceDerivation {
+    fn context_derivations(&mut self) -> impl Iterator<Item = ContextDerivation> + '_ {
+        self.rels.drain().map(|(name, rel)| {
+            let curr_desc = self
+                .base_fwds
+                .element_desc(&name, &FwdMethods::all_delegate())
+                .into_owned();
 
-        let curr_desc = base_fwds
-            .parse_to_desc(&name, &FwdMethods::all_delegate())
-            .into_owned();
+            //TODO: add generic clause synthesis...
+            let data = self
+                .data
+                .as_ref()
+                .map_enum_variants(|v| v.parse_to_desc(&name, &curr_desc))
+                .map_struct_fields(|f| f.parse_to_desc(&name, &curr_desc));
 
-        let this = if opts.generics.params.is_empty() && rel.param.is_empty() {
-            syn::parse_str::<Type>(&opts.ident.to_string())
-                .expect("a struct's ident should always be a valid type...")
-        } else {
-            //TODO: fix this
-            abort!(Span::call_site(), "generics not yet supported")
-        };
-
-        if opts.where_.is_some() {
-            //TODO: fix this
-            abort!(Span::call_site(), "where clauses not yet supported")
-        }
-        if rel.where_.is_some() {
-            //TODO: fix this
-            abort!(
-                Span::call_site(),
-                "relation-specific where clauses not yet supported"
-            )
-        }
-
-        //TODO: add generic clause synthesis...
-        let data = opts
-            .data
-            .as_ref()
-            .map_enum_variants(|v| v.parse_to_desc(&name, &curr_desc))
-            .map_struct_fields(|f| f.parse_to_desc(&name, &curr_desc));
-
-        let traits = EquivalenceTraits::extend_base_traits(
-            base_traits,
-            rel.full.clone(),
-            rel.partial_eq.clone(),
-            rel.eq.clone(),
-            rel.partial_ord.clone(),
-            rel.ord.clone(),
-            rel.hash.clone(),
-            true,
-        )?;
-
-        Ok(ContextDerivation {
-            ctx,
-            this,
-            ident: opts.ident.clone(),
-            traits,
-            data,
-            _generics: opts.generics.clone(),
+            ContextDerivation {
+                ident: self.ident.clone(),
+                rel,
+                data,
+            }
         })
     }
+
+    pub(crate) fn synthesize(&mut self, result: &mut TokenStream2) {
+        for derivation in self.context_derivations() {
+            derivation.synthesize(result);
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RelDesc {
+    pub(crate) ctx: Type,
+    pub(crate) ty: Type,
+    pub(crate) bounds: EquivalenceBounds,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct EquivalenceBounds {
+    pub(crate) partial_eq: Option<WhereClause>,
+    pub(crate) eq: Option<WhereClause>,
+    pub(crate) partial_ord: Option<WhereClause>,
+    pub(crate) ord: Option<WhereClause>,
+    pub(crate) hash: Option<WhereClause>,
+}
+
+impl EquivalenceBounds {
+    pub(crate) fn all_empty(span: Span) -> EquivalenceBounds {
+        let clause = Some(true_where_clause(span));
+        EquivalenceBounds {
+            partial_eq: clause.clone(),
+            eq: clause.clone(),
+            partial_ord: clause.clone(),
+            ord: clause.clone(),
+            hash: clause,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct Fwds {
+    pub(crate) default_fwd: Option<FwdMethods>,
+    pub(crate) fwd: HashMap<String, FwdMethods>,
+}
+
+#[derive(Debug)]
+pub(crate) struct ContextDerivation {
+    ident: Ident,
+    rel: RelDesc,
+    data: Data<VariantDesc, FieldDesc>,
 }
 
 #[derive(Debug, Clone)]
@@ -105,7 +96,7 @@ impl FieldOpts {
     fn parse_to_desc(&self, name: &str, curr_desc: &FwdMethods) -> FieldDesc {
         FieldDesc {
             ident: self.ident.clone(),
-            fwd: self.fwds.parse_to_desc(name, curr_desc).into_owned(),
+            fwd: self.fwds.element_desc(name, curr_desc).into_owned(),
         }
     }
 }
@@ -119,7 +110,7 @@ struct VariantDesc {
 impl VariantOpts {
     /// Parse this to a variant descriptor, given the current forwarding descriptor and name
     fn parse_to_desc(&self, name: &str, curr_desc: &FwdMethods) -> VariantDesc {
-        let curr_desc = self.fwds.parse_to_desc(name, curr_desc);
+        let curr_desc = self.fwds.element_desc(name, curr_desc);
         VariantDesc {
             ident: self.ident.clone(),
             fields: self
@@ -157,10 +148,10 @@ impl FwdMethods {
         }
     }
 
-    /// Get the next forwarding descriptor, given a the current descriptor and a refinement
+    /// Given the current descriptor and a descriptor for the desired element, get the element descriptor
     ///
-    /// If `strict` is true, then crash if an override is attempted.
-    pub(crate) fn next_desc<'a>(
+    /// If `strict` is true, then crash if a forwarding method override is attempted
+    pub(crate) fn compute_element_desc<'a>(
         mut this: Cow<'a, Self>,
         refinement: Cow<FwdMethods>,
         strict: bool,
@@ -205,15 +196,15 @@ impl FwdMethods {
 }
 
 impl Fwds {
-    /// Get the next forwarding descriptor, given the current forwarding descriptor and name
-    fn parse_to_desc<'a>(&self, name: &str, curr_desc: &'a FwdMethods) -> Cow<'a, FwdMethods> {
+    /// Given the current forwarding descriptor, get the forwarding descriptor for the given named element
+    fn element_desc<'a>(&self, name: &str, curr_desc: &'a FwdMethods) -> Cow<'a, FwdMethods> {
         //NOTE: named overrides default overrides current
         let mut result = Cow::Borrowed(curr_desc);
         if let Some(default) = &self.default_fwd {
-            result = FwdMethods::next_desc(result, Cow::Borrowed(default), false);
+            result = FwdMethods::compute_element_desc(result, Cow::Borrowed(default), false);
         }
         if let Some(named) = self.fwd.get(name) {
-            result = FwdMethods::next_desc(result, Cow::Borrowed(named), false);
+            result = FwdMethods::compute_element_desc(result, Cow::Borrowed(named), false);
         }
         result
     }

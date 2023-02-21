@@ -3,13 +3,13 @@ use super::*;
 impl ContextDerivation {
     /// Synthesize code for a derivation
     pub(crate) fn synthesize(&self, result: &mut TokenStream2) {
-        if let Some(clause) = &self.traits.partial_eq {
+        if let Some(clause) = &self.rel.bounds.partial_eq {
             self.synthesize_partial_eq(clause, result)
         }
-        if let Some(clause) = &self.traits.eq {
+        if let Some(clause) = &self.rel.bounds.eq {
             self.synthesize_eq(clause, result)
         }
-        let delegate_partial = if let Some(ord_clause) = &self.traits.ord {
+        let delegate_partial = if let Some(ord_clause) = &self.rel.bounds.ord {
             //TODO: fix this once has_partial_spec is added
             let delegate_partial = /*if let Some(partial_ord_clause) = &self.traits.partial_ord {
             ord_clause == partial_ord_clause
@@ -22,19 +22,19 @@ impl ContextDerivation {
             false
         };
         if !delegate_partial {
-            if let Some(clause) = &self.traits.partial_ord {
+            if let Some(clause) = &self.rel.bounds.partial_ord {
                 self.synthesize_partial_cmp(clause, result);
             }
         }
-        if let Some(clause) = &self.traits.hash {
+        if let Some(clause) = &self.rel.bounds.hash {
             self.synthesize_hash(clause, result)
         }
     }
 
     /// Synthesize code for partial equality, given a where clause
     fn synthesize_partial_eq(&self, clause: &WhereClause, result: &mut TokenStream2) {
-        let ty = &self.this;
-        let ctx = &self.ctx;
+        let ty = &self.rel.ty;
+        let ctx = &self.rel.ctx;
         let imp = self.synthesize_binary_trait_impl(BinaryTrait::PartialEq);
         result.extend(quote! {
             impl ::equivalence::PartialEqWith<#ctx> for #ty #clause {
@@ -47,8 +47,8 @@ impl ContextDerivation {
 
     /// Synthesize code for equality, given a where clause
     fn synthesize_eq(&self, clause: &WhereClause, result: &mut TokenStream2) {
-        let ty = &self.this;
-        let ctx = &self.ctx;
+        let ty = &self.rel.ty;
+        let ctx = &self.rel.ctx;
         result.extend(quote! {
             impl ::equivalence::EqWith<#ctx> for #ty #clause {}
         })
@@ -56,8 +56,8 @@ impl ContextDerivation {
 
     /// Synthesize code for partial comparison, given a where clause
     fn synthesize_partial_cmp(&self, clause: &WhereClause, result: &mut TokenStream2) {
-        let ty = &self.this;
-        let ctx = &self.ctx;
+        let ty = &self.rel.ty;
+        let ctx = &self.rel.ctx;
         let imp = self.synthesize_binary_trait_impl(BinaryTrait::PartialOrd);
         result.extend(quote! {
         impl ::equivalence::PartialOrdWith<#ctx> for #ty #clause {
@@ -84,8 +84,8 @@ impl ContextDerivation {
                 "partial delegation not yet implemented"
             }
         }
-        let ty = &self.this;
-        let ctx = &self.ctx;
+        let ty = &self.rel.ty;
+        let ctx = &self.rel.ctx;
         let imp = self.synthesize_binary_trait_impl(BinaryTrait::Ord);
         result.extend(quote! {
             impl ::equivalence::OrdWith<#ctx> for #ty #clause {
@@ -98,8 +98,8 @@ impl ContextDerivation {
 
     /// Synthesize code for hashing, given a where clause
     fn synthesize_hash(&self, clause: &WhereClause, result: &mut TokenStream2) {
-        let ty = &self.this;
-        let ctx = &self.ctx;
+        let ty = &self.rel.ty;
+        let ctx = &self.rel.ctx;
         let imp = self.synthesize_hash_impl();
         result.extend(quote! {
             impl ::equivalence::HashWith<#ctx> for #ty #clause {
