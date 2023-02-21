@@ -116,7 +116,6 @@ struct FwdOptsInner {
     cmp_with: Option<Expr>,
     partial_cmp_with: Option<Expr>,
     hash_with: Option<Expr>,
-    map_ctx: Option<Expr>,
     ignore: Flag,
     delegate: Flag,
     rec: Flag,

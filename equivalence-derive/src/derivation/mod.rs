@@ -256,8 +256,8 @@ impl FwdOptsInner {
             ) {
                 (Some(eq_with), None, false, false, false) => Some(FwdMethod::WithFn(eq_with)),
                 (None, Some(map_eq), false, false, rec) => {
-                    if rec || self.rec.is_present() || self.map_ctx.is_some() {
-                        Some(FwdMethod::MapRec(map_eq, self.map_ctx.clone()))
+                    if rec || self.rec.is_present() {
+                        Some(FwdMethod::MapRec(map_eq))
                     } else {
                         Some(FwdMethod::Map(map_eq))
                     }
@@ -273,15 +273,15 @@ impl FwdOptsInner {
                 }
                 (None, None, false, false, true) => {
                     if let Some(map) = &self.map {
-                        Some(FwdMethod::MapRec(map.clone(), self.map_ctx.clone()))
+                        Some(FwdMethod::MapRec(map.clone()))
                     } else {
-                        Some(FwdMethod::Rec(self.map_ctx.clone()))
+                        Some(FwdMethod::Rec)
                     }
                 }
                 (None, None, false, false, false) => {
                     if let Some(map) = &self.map {
-                        if self.rec.is_present() || self.map_ctx.is_some() {
-                            Some(FwdMethod::MapRec(map.clone(), self.map_ctx.clone()))
+                        if self.rec.is_present() {
+                            Some(FwdMethod::MapRec(map.clone()))
                         } else {
                             Some(FwdMethod::Map(map.clone()))
                         }
@@ -293,7 +293,7 @@ impl FwdOptsInner {
                             } else if self.delegate.is_present() {
                                 Some(FwdMethod::Delegate)
                             } else {
-                                Some(FwdMethod::Rec(self.map_ctx.clone()))
+                                Some(FwdMethod::Rec)
                             }
                         } else {
                             None
@@ -405,8 +405,8 @@ enum FwdMethod {
     Ignore,
     #[default]
     Delegate,
-    Rec(Option<Expr>),
+    Rec,
     Map(Expr),
-    MapRec(Expr, Option<Expr>),
+    MapRec(Expr),
     WithFn(Expr),
 }

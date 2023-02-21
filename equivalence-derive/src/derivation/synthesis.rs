@@ -302,20 +302,14 @@ impl FwdDesc {
         match &self.eq {
             Some(FwdMethod::Ignore) => quote! { true },
             Some(FwdMethod::Delegate) => quote! { #this == #other },
-            Some(FwdMethod::Rec(None)) => {
+            Some(FwdMethod::Rec) => {
                 quote! { #this.eq_with(&#other, #ctx) }
-            }
-            Some(FwdMethod::Rec(Some(map))) => {
-                quote! { #this.eq_with(&#other, (#map)(#ctx)) }
             }
             Some(FwdMethod::Map(map)) => {
                 quote! { (#map)(&#this, #ctx) == (#map)(&#other, #ctx) }
             }
-            Some(FwdMethod::MapRec(map, None)) => {
+            Some(FwdMethod::MapRec(map)) => {
                 quote! { (#map)(&#this, #ctx).eq_with(&(#map)(&#other, #ctx), #ctx) }
-            }
-            Some(FwdMethod::MapRec(map, Some(map_ctx))) => {
-                quote! { (#map)(&#this, #ctx).eq_with(&(#map)(&#other, #ctx), (#map_ctx)(#ctx) ) }
             }
             Some(FwdMethod::WithFn(eq)) => {
                 quote! { (#eq)(&#this, &#other, #ctx) }
@@ -342,20 +336,14 @@ impl FwdDesc {
         match &self.partial_cmp {
             Some(FwdMethod::Ignore) => quote! { Some(::core::cmp::Ordering::Equal) },
             Some(FwdMethod::Delegate) => quote! { #this.partial_cmp(&#other) },
-            Some(FwdMethod::Rec(None)) => {
+            Some(FwdMethod::Rec) => {
                 quote! { #this.partial_cmp_with(&#other, #ctx) }
-            }
-            Some(FwdMethod::Rec(Some(map))) => {
-                quote! { #this.partial_cmp_with(&#other, (#map)(#ctx)) }
             }
             Some(FwdMethod::Map(map)) => {
                 quote! {(#map)(&#this, #ctx).partial_cmp(&(#map)(&#other, #ctx)) }
             }
-            Some(FwdMethod::MapRec(map, None)) => {
+            Some(FwdMethod::MapRec(map)) => {
                 quote! { (#map)(&#this, #ctx).partial_cmp_with(&(#map)(&#other, #ctx), #ctx) }
-            }
-            Some(FwdMethod::MapRec(map, Some(map_ctx))) => {
-                quote! { (#map)(&#this, #ctx).partial_cmp_with(&(#map)(&#other, #ctx), (#map_ctx)(#ctx) ) }
             }
             Some(FwdMethod::WithFn(cmp)) => {
                 quote! { (#cmp)(&#this, &#other, #ctx) }
@@ -376,20 +364,14 @@ impl FwdDesc {
         match &self.cmp {
             Some(FwdMethod::Ignore) => quote! { ::core::cmp::Ordering::Equal },
             Some(FwdMethod::Delegate) => quote! { #this.cmp(&#other) },
-            Some(FwdMethod::Rec(None)) => {
+            Some(FwdMethod::Rec) => {
                 quote! { #this.cmp_with(&#other, #ctx) }
-            }
-            Some(FwdMethod::Rec(Some(map))) => {
-                quote! { #this.cmp_with(&#other, (#map)(#ctx)) }
             }
             Some(FwdMethod::Map(map)) => {
                 quote! {(#map)(&#this, #ctx).cmp(&(#map)(&#other, #ctx)) }
             }
-            Some(FwdMethod::MapRec(map, None)) => {
+            Some(FwdMethod::MapRec(map)) => {
                 quote! { (#map)(&#this, #ctx).cmp_with(&(#map)(&#other, #ctx), #ctx) }
-            }
-            Some(FwdMethod::MapRec(map, Some(map_ctx))) => {
-                quote! { (#map)(&#this, #ctx).cmp_with(&(#map)(&#other, #ctx), (#map_ctx)(#ctx) ) }
             }
             Some(FwdMethod::WithFn(cmp)) => {
                 quote! { (#cmp)(&#this, &#other, #ctx) }
@@ -410,20 +392,14 @@ impl FwdDesc {
         match &self.hash {
             Some(FwdMethod::Ignore) => quote! {},
             Some(FwdMethod::Delegate) => quote! { #this.hash(#hasher) },
-            Some(FwdMethod::Rec(None)) => {
+            Some(FwdMethod::Rec) => {
                 quote! { #this.hash_with(#hasher, #ctx) }
-            }
-            Some(FwdMethod::Rec(Some(map))) => {
-                quote! { #this.hash_with(#hasher, (#map)(#ctx)) }
             }
             Some(FwdMethod::Map(map)) => {
                 quote! {(#map)(&#this, #ctx).hash(#hasher) }
             }
-            Some(FwdMethod::MapRec(map, None)) => {
+            Some(FwdMethod::MapRec(map)) => {
                 quote! { (#map)(&#this, #ctx).hash_with(#hasher, #ctx) }
-            }
-            Some(FwdMethod::MapRec(map, Some(map_ctx))) => {
-                quote! { (#map)(&#this, #ctx).hash_with(#hasher, (#map_ctx)(#ctx) ) }
             }
             Some(FwdMethod::WithFn(hash)) => {
                 quote! { (#hash)(&#this, #hasher, #ctx) }
