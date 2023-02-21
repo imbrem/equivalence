@@ -170,18 +170,18 @@ impl Fwds {
 }
 
 #[derive(Debug, Clone, FromMeta, Default)]
-pub(crate) struct FwdOptsParser {
-    pub(crate) name: Option<String>,
-    pub(crate) by: Option<SpannedValue<FwdMethod>>,
-    pub(crate) full: Flag,
-    pub(crate) eq: Option<Override<FwdMethod>>,
-    pub(crate) partial_ord: Option<Override<FwdMethod>>,
-    pub(crate) ord: Option<Override<FwdMethod>>,
-    pub(crate) hash: Option<Override<FwdMethod>>,
-    pub(crate) map: Option<Expr>,
-    pub(crate) ignore: Flag,
-    pub(crate) delegate: Flag,
-    pub(crate) rec: Flag,
+struct FwdOptsParser {
+    name: Option<String>,
+    by: Option<SpannedValue<FwdMethod>>,
+    full: Flag,
+    eq: Option<Override<FwdMethod>>,
+    partial_ord: Option<Override<FwdMethod>>,
+    ord: Option<Override<FwdMethod>>,
+    hash: Option<Override<FwdMethod>>,
+    map: Option<Expr>,
+    ignore: Flag,
+    delegate: Flag,
+    rec: Flag,
 }
 
 impl From<FwdOptsParser> for FwdOpts {
