@@ -1,6 +1,6 @@
 use super::*;
 
-impl EquivalenceDerivation {
+impl ContextDerivation {
     /// Synthesize code for a derivation
     pub(crate) fn synthesize(&self, result: &mut TokenStream2) {
         if let Some(clause) = &self.traits.partial_eq {

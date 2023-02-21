@@ -5,7 +5,7 @@ use super::*;
 mod synthesis;
 
 #[derive(Debug)]
-pub(crate) struct EquivalenceDerivation {
+pub(crate) struct ContextDerivation {
     ctx: Type,
     this: Type,
     ident: Ident,
@@ -27,15 +27,15 @@ impl EquivalenceTraits {
     }
 }
 
-impl EquivalenceDerivation {
+impl ContextDerivation {
     /// Construct the derivation given a relation and a set of options, and an input span
     pub(crate) fn construct_derivation(
         rel: &RelOptsInner,
-        opts: &EquivalenceOpts,
+        opts: &EquivalenceOptsParser,
         base_traits: Option<&EquivalenceTraits>,
         base_fwds: &Fwds,
         rel_span: Span,
-    ) -> Result<EquivalenceDerivation, darling::Error> {
+    ) -> Result<ContextDerivation, darling::Error> {
         let (name, ctx) = match (&rel.name, &rel.ty) {
             (None, Some(ty)) => (format!("{:?}", ty), ty.clone()),
             (Some(name), None) => match syn::parse_str::<Type>(name) {
@@ -96,7 +96,7 @@ impl EquivalenceDerivation {
             true,
         )?;
 
-        Ok(EquivalenceDerivation {
+        Ok(ContextDerivation {
             ctx,
             this,
             ident: opts.ident.clone(),
@@ -140,6 +140,49 @@ impl VariantOpts {
                 .as_ref()
                 .map(|f| f.parse_to_desc(name, &curr_desc)),
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct Fwds {
+    default_fwd: Option<FwdDesc>,
+    fwd: HashMap<String, FwdDesc>,
+}
+
+impl Fwds {
+    pub(crate) fn new(fwds: Vec<FwdOpts>) -> Fwds {
+        let mut fwd = HashMap::with_capacity(fwds.len());
+        let mut default_fwd = None;
+        for f in fwds {
+            let f = f.0;
+            if let Some(name) = f.name.clone() {
+                match fwd.entry(name) {
+                    std::collections::hash_map::Entry::Occupied(mut o) => {
+                        let o = o.get_mut();
+                        let mut old = FwdDesc::default();
+                        std::mem::swap(o, &mut old);
+                        *o = FwdDesc::next_desc(
+                            Cow::Owned(f.parse_to_desc()),
+                            Cow::Owned(old),
+                            true,
+                        )
+                        .into_owned();
+                    }
+                    std::collections::hash_map::Entry::Vacant(v) => {
+                        v.insert(f.parse_to_desc());
+                    }
+                }
+            } else {
+                let new = FwdDesc::next_desc(
+                    Cow::Owned(f.parse_to_desc()),
+                    Cow::Owned(default_fwd.unwrap_or(FwdDesc::default())),
+                    true,
+                )
+                .into_owned();
+                default_fwd = Some(new)
+            }
+        }
+        Fwds { fwd, default_fwd }
     }
 }
 
