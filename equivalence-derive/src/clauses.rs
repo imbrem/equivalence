@@ -12,6 +12,17 @@ pub(crate) struct EquivalenceTraits {
 }
 
 impl EquivalenceTraits {
+    pub(crate) fn all_empty(span: Span) -> EquivalenceTraits {
+        let clause = Some(true_where_clause(span));
+        EquivalenceTraits {
+            partial_eq: clause.clone(),
+            eq: clause.clone(),
+            partial_ord: clause.clone(),
+            ord: clause.clone(),
+            hash: clause,
+        }
+    }
+
     pub(crate) fn compute_base_traits(
         full: impl FlagSet,
         partial_eq: impl FlagSet,

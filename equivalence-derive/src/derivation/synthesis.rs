@@ -278,7 +278,7 @@ impl FieldDesc {
     }
 }
 
-impl FwdDesc {
+impl FwdMethods {
     fn synthesize_binary_trait(
         &self,
         this: TokenStream2,
