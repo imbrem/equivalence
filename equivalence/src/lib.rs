@@ -14,6 +14,7 @@ TODO: this
 
 TODO: this
 */
+#![forbid(unsafe_code, missing_docs, missing_debug_implementations)]
 
 use std::borrow::Cow;
 use std::hash::Hash;
@@ -31,6 +32,7 @@ use either::{for_both, Either};
 
 pub use equivalence_derive::Equivalence;
 
+/// A macro to implement `PartialEqWith` by delegating to the `PartialEq` implementation, ignoring the context
 #[macro_export]
 macro_rules! pod_partial_eq_with {
     ($ty:ty) => {
@@ -46,6 +48,7 @@ macro_rules! pod_partial_eq_with {
     };
 }
 
+/// A macro to implement `EqWith`
 #[macro_export]
 macro_rules! pod_eq_with {
     ($ty:ty) => {
@@ -54,6 +57,7 @@ macro_rules! pod_eq_with {
     };
 }
 
+/// A macro to implement `PartialOrdWith` by delegating to the `PartialOrd` implementation, ignoring the context
 #[macro_export]
 macro_rules! pod_partial_ord_with {
     ($ty:ty) => {
@@ -69,6 +73,7 @@ macro_rules! pod_partial_ord_with {
     };
 }
 
+/// A macro to implement `OrdWith` and `PartialOrdWith` by delegating to the `Ord` and `PartialOrd` implementation, ignoring the context
 #[macro_export]
 macro_rules! pod_ord_with {
     ($ty:ty) => {
@@ -86,6 +91,8 @@ macro_rules! pod_ord_with {
     };
 }
 
+
+/// A macro to implement `HashWith` by delegating to the `Hash` implementation, ignoring the context
 #[macro_export]
 macro_rules! pod_hash_with {
     ($ty:ty) => {
@@ -102,6 +109,7 @@ macro_rules! pod_hash_with {
     };
 }
 
+/// A macro to implement `PartialEqWith`, `EqWith`, `PartialOrdWith`, `OrdWith`, and `HashWith` by delegating to their standard implementations, ignoring the context
 #[macro_export]
 macro_rules! pod_equiv {
     ($ty:ty) => {
