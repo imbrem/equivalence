@@ -1,3 +1,20 @@
+/*!
+# Equivalence
+
+`equivalence` is a derive macro for automatically deriving comparison and hashing traits modulo an 
+[equivalence relation](https://en.wikipedia.org/wiki/Equivalence_relation), here determined by a context.
+Use cases include comparing data structures holding indices into an arena, comparing syntax trees modulo
+a union-find algorithm, comparing data structures modulo some equivalence relation on the elements, and more.
+
+## Traits
+
+TODO: this
+
+## [`Equivalence`] macro
+
+TODO: this
+*/
+
 use std::borrow::Cow;
 use std::hash::Hash;
 use std::num::{
@@ -5,7 +22,7 @@ use std::num::{
     NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize,
 };
 // extern crate self as equivalence;
-// use equivalence_derive::Equivalence;d
+// use equivalence_derive::Equivalence;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::{cmp::Ordering, hash::Hasher};
