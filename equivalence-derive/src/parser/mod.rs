@@ -1,20 +1,20 @@
+use std::cell::Cell;
+
 use super::*;
 
-mod utils;
-use syn::Generics;
-pub(crate) use utils::*;
+use syn::{Generics, TypeParam};
 
 #[derive(Debug, FromDeriveInput)]
 #[darling(attributes(equiv))]
 pub(crate) struct EquivalenceOptsParser {
     #[darling(multiple)]
     rel: Vec<SpannedValue<RelOpts>>,
-    full: Flag,
-    partial_eq: Option<WhereFlag>,
-    eq: Option<WhereFlag>,
-    partial_ord: Option<WhereFlag>,
-    ord: Option<WhereFlag>,
-    hash: Option<WhereFlag>,
+    full: Option<SpannedValue<Override<bool>>>,
+    partial_eq: Option<Override<WhereFlag>>,
+    eq: Option<Override<WhereFlag>>,
+    partial_ord: Option<Override<WhereFlag>>,
+    ord: Option<Override<WhereFlag>>,
+    hash: Option<Override<WhereFlag>>,
     ctx: Option<Ident>,
     #[darling(multiple)]
     fwd: Vec<FwdOptsParser>,
@@ -23,6 +23,7 @@ pub(crate) struct EquivalenceOptsParser {
     data: Data<VariantOpts, FieldOpts>,
     generics: syn::Generics,
     ident: Ident,
+    infer_generics: Option<SpannedValue<Override<bool>>>,
 }
 
 impl FromDeriveInput for EquivalenceDerivation {
@@ -30,11 +31,14 @@ impl FromDeriveInput for EquivalenceDerivation {
         let opts = EquivalenceOptsParser::from_derive_input(input)?;
         let base_traits = EquivalenceBounds::compute_base_traits(
             opts.full,
+            opts.infer_generics,
             opts.partial_eq.clone(),
             opts.eq.clone(),
             opts.partial_ord.clone(),
             opts.ord.clone(),
             opts.hash.clone(),
+            opts.where_.clone(),
+            &opts.generics,
             true,
         )?;
         let base_fwds = Fwds::new(opts.fwd.clone());
@@ -91,14 +95,17 @@ impl FromDeriveInput for EquivalenceDerivation {
                 )
             }
 
-            let bounds = EquivalenceBounds::extend_base_traits(
-                base_traits.as_ref(),
+            let bounds = base_traits.specify(
                 rel.0.full.clone(),
+                rel.0.infer_generics.clone(),
                 rel.0.partial_eq.clone(),
                 rel.0.eq.clone(),
                 rel.0.partial_ord.clone(),
                 rel.0.ord.clone(),
                 rel.0.hash.clone(),
+                rel.0.where_.clone(),
+                &opts.generics,
+                false,
                 true,
             )?;
 
@@ -126,35 +133,24 @@ impl FromDeriveInput for EquivalenceDerivation {
 }
 
 #[derive(Debug, Clone, FromMeta, Default)]
-pub(crate) struct RelOptsParser {
-    pub(crate) name: Option<SpannedValue<String>>,
-    pub(crate) ty: Option<Type>,
-    pub(crate) full: Flag,
-    pub(crate) partial_eq: Option<WhereFlag>,
-    pub(crate) eq: Option<WhereFlag>,
-    pub(crate) partial_ord: Option<WhereFlag>,
-    pub(crate) ord: Option<WhereFlag>,
-    pub(crate) hash: Option<WhereFlag>,
+struct RelOptsParser {
+    name: Option<SpannedValue<String>>,
+    ty: Option<Type>,
+    full: Option<SpannedValue<Override<bool>>>,
+    partial_eq: Option<Override<WhereFlag>>,
+    eq: Option<Override<WhereFlag>>,
+    partial_ord: Option<Override<WhereFlag>>,
+    ord: Option<Override<WhereFlag>>,
+    hash: Option<Override<WhereFlag>>,
     #[darling(multiple)]
-    pub(crate) param: Vec<Ident>,
+    param: Vec<TypeParam>,
     #[darling(rename = "where")]
-    pub(crate) where_: Option<WhereClause>,
+    where_: Option<WhereClause>,
+    infer_generics: Option<SpannedValue<Override<bool>>>,
 }
 
-// impl RelOptsParser {
-//     pub(crate) fn name(&self) -> String {
-//         if let Some(name) = &self.name {
-//             (**name).clone()
-//         } else if let Some(ty) = &self.ty {
-//             ty.to_token_stream().to_string()
-//         } else {
-//             "unnamed".to_string()
-//         }
-//     }
-// }
-
 #[derive(Debug, Clone)]
-pub(crate) struct RelOpts(pub(crate) RelOptsParser);
+struct RelOpts(RelOptsParser);
 
 impl FromMeta for RelOpts {
     fn from_list(items: &[syn::NestedMeta]) -> darling::Result<Self> {
@@ -183,153 +179,183 @@ impl FromMeta for RelOpts {
 }
 
 impl EquivalenceBounds {
-    pub(crate) fn compute_base_traits(
-        full: impl FlagSet,
-        partial_eq: impl FlagSet,
-        eq: impl FlagSet,
-        partial_ord: impl FlagSet,
-        ord: impl FlagSet,
-        hash: impl FlagSet,
-        warn_redundant: bool,
-    ) -> Result<Option<EquivalenceBounds>, darling::Error> {
-        let all_unset = partial_eq.flag_set() == None
-            && eq.flag_set() == None
-            && partial_ord.flag_set() == None
-            && ord.flag_set() == None
-            && hash.flag_set() == None;
-        let full_set = full.flag_set();
-        match full_set {
-            Some(true) => {
-                let anyone_false = partial_eq.flag_set() == Some(false)
-                    || eq.flag_set() == Some(false)
-                    || partial_ord.flag_set() == Some(false)
-                    || ord.flag_set() == Some(false)
-                    || hash.flag_set() == Some(false);
-                if anyone_false {
-                    return Err(darling::Error::custom(
-                        "`full` flag set to `true`, but another `equiv` flag is set to `false`",
-                    )
-                    .with_span(&SpannedValue::new((), full.where_span())));
-                } else {
-                    let warn_redundant = warn_redundant
-                        && (partial_eq.is_set_true()
-                            || eq.is_set_true()
-                            || partial_ord.is_set_true()
-                            || ord.is_set_true()
-                            || hash.is_set_true());
-                    if warn_redundant {
-                        //TODO: consider whether this warning is useful
-                        emit_warning!(
-                            full.where_span(),
-                            "if `full` flag is set to `true`, setting other `equiv` flags to `true` (vs a `where` clause) is redundant"
-                        )
-                    }
-                    //TODO: fix these
-                    Ok(Some(EquivalenceBounds {
-                        partial_eq: Some(ImplBounds {
-                            clause: partial_eq
-                                .into_where_clause()
-                                .unwrap_or(true_where_clause(full.where_span())),
-                            generics: Generics::default(),
-                        }),
-                        eq: Some(ImplBounds {
-                            clause: eq
-                                .into_where_clause()
-                                .unwrap_or(true_where_clause(full.where_span())),
-                            generics: Generics::default(),
-                        }),
-                        partial_ord: Some(ImplBounds {
-                            clause: partial_ord
-                                .into_where_clause()
-                                .unwrap_or(true_where_clause(full.where_span())),
-                            generics: Generics::default(),
-                        }),
-                        ord: Some(ImplBounds {
-                            clause: ord
-                                .into_where_clause()
-                                .unwrap_or(true_where_clause(full.where_span())),
-                            generics: Generics::default(),
-                        }),
-                        hash: Some(ImplBounds {
-                            clause: hash
-                                .into_where_clause()
-                                .unwrap_or(true_where_clause(full.where_span())),
-                            generics: Generics::default(),
-                        }),
-                    }))
-                }
-            }
-            Some(false) => {
-                return Err(darling::Error::custom(
-                    "explicitly disabling `full` is currently undefined",
-                )
-                .with_span(&SpannedValue::new((), full.where_span())))
-            }
-            None if all_unset => Ok(None),
-            None => {
-                let eq = eq
-                    .into_where_clause()
-                    .map(ImplBounds::with_default_generics);
-                let ord = ord
-                    .into_where_clause()
-                    .map(ImplBounds::with_default_generics);
-                let hash = hash
-                    .into_where_clause()
-                    .map(ImplBounds::with_default_generics);
-                let partial_eq = partial_eq
-                    .into_where_clause()
-                    .map(ImplBounds::with_default_generics);
-                let partial_ord = partial_ord
-                    .into_where_clause()
-                    .map(ImplBounds::with_default_generics);
-                Ok(Some(EquivalenceBounds {
-                    partial_eq,
-                    eq,
-                    partial_ord,
-                    ord,
-                    hash,
-                }))
-            }
-        }
-    }
-
-    pub(crate) fn extend_base_traits(
-        base_traits: Option<&Self>,
-        full: impl FlagSet,
-        partial_eq: impl FlagSet,
-        eq: impl FlagSet,
-        partial_ord: impl FlagSet,
-        ord: impl FlagSet,
-        hash: impl FlagSet,
+    fn compute_base_traits(
+        full: Option<SpannedValue<Override<bool>>>,
+        infer_generics: Option<SpannedValue<Override<bool>>>,
+        partial_eq: Option<Override<WhereFlag>>,
+        eq: Option<Override<WhereFlag>>,
+        partial_ord: Option<Override<WhereFlag>>,
+        ord: Option<Override<WhereFlag>>,
+        hash: Option<Override<WhereFlag>>,
+        where_: Option<WhereClause>,
+        generics: &Generics,
         warn_redundant: bool,
     ) -> Result<EquivalenceBounds, darling::Error> {
-        if let Some(base_traits) = base_traits {
-            if full.flag_set() != None
-                || partial_eq.flag_set() != None
-                || eq.flag_set() != None
-                || partial_ord.flag_set() != None
-                || ord.flag_set() != None
-                || hash.flag_set() != None
+        EquivalenceBounds {
+            partial_eq: None,
+            eq: None,
+            partial_ord: None,
+            ord: None,
+            hash: None,
+        }
+        .specify(
+            full,
+            infer_generics,
+            partial_eq,
+            eq,
+            partial_ord,
+            ord,
+            hash,
+            where_,
+            generics,
+            true,
+            warn_redundant,
+        )
+    }
+
+    fn specify(
+        &self,
+        full: Option<SpannedValue<Override<bool>>>,
+        infer_generics: Option<SpannedValue<Override<bool>>>,
+        partial_eq: Option<Override<WhereFlag>>,
+        eq: Option<Override<WhereFlag>>,
+        partial_ord: Option<Override<WhereFlag>>,
+        ord: Option<Override<WhereFlag>>,
+        hash: Option<Override<WhereFlag>>,
+        where_: Option<WhereClause>,
+        generics: &Generics,
+        strong_full: bool,
+        warn_redundant: bool,
+    ) -> Result<EquivalenceBounds, darling::Error> {
+        let none_specified = partial_eq.is_none()
+            && eq.is_none()
+            && partial_ord.is_none()
+            && ord.is_none()
+            && hash.is_none();
+
+        let full_span = full.as_ref().map(Spanned::span);
+        let full = match &full {
+            Some(full) => match **full {
+                Override::Explicit(b) => Some(b),
+                Override::Inherit => Some(true),
+            },
+            None => None,
+        };
+
+        let where_span = where_.as_ref().map(Spanned::span);
+
+        let infer_generics_used = Cell::new(infer_generics.is_none());
+        let infer_generics_span = infer_generics.as_ref().map(Spanned::span);
+        let infer_generics_helper = infer_generics.as_deref();
+
+        let get_infer_generics = |original: Option<&ImplBounds>| {
+            infer_generics_used.set(true);
+            match infer_generics_helper {
+                Some(infer_generics) => infer_generics.clone().unwrap_or(true),
+                None => original.map(|original| original.infer).unwrap_or(true),
+            }
+        };
+
+        let override_clause_used = Cell::new(where_.is_none());
+        let get_override_clause = |original: Option<&ImplBounds>| {
+            override_clause_used.set(true);
+            where_
+                .clone()
+                .or_else(|| original.map(|original| original.clause.clone()))
+                .unwrap_or_else(|| true_where_clause(full_span.unwrap_or(Span::call_site())))
+        };
+
+        let get_override = |original: Option<&ImplBounds>| ImplBounds {
+            clause: get_override_clause(original),
+            infer: get_infer_generics(original),
+            generics: generics.clone(),
+        };
+
+        let full_override_used = Cell::new(full.is_none());
+        let get_full_override = |original: Option<&ImplBounds>| {
+            full_override_used.set(true);
+            if full == Some(true)
+                || (full == None && (where_span.is_some() || (strong_full && none_specified)))
             {
-                //TODO: fix this
-                abort! {
-                    Span::call_site(),
-                    "per-relation implementation not yet supported"
+                Some(get_override(original))
+            } else if full == None {
+                original.cloned()
+            } else {
+                None
+            }
+        };
+
+        let get_strategy_bounds = |strategy: WhereStrategy, original: Option<&ImplBounds>| {
+            let clause = strategy
+                .where_
+                .unwrap_or_else(|| get_override_clause(original));
+            let infer = strategy
+                .infer
+                .map(|infer| infer.unwrap_or(true))
+                .unwrap_or_else(|| get_infer_generics(original));
+            ImplBounds {
+                clause,
+                infer,
+                generics: generics.clone(),
+            }
+        };
+
+        let get_where_flag_bounds =
+            |flag: Option<Override<WhereFlag>>, original: Option<&ImplBounds>| {
+                let res = match flag {
+                    Some(Override::Inherit) => Some(get_override(original)),
+                    Some(Override::Explicit(WhereFlag::Disabled)) => {
+                        if let Some(blame) = full {
+                            return Err(darling::Error::custom(
+                            "`partial_eq` cannot be set to `false` while `full` is set to `true`",
+                        )
+                        .with_span(&blame));
+                        } else {
+                            None
+                        }
+                    }
+                    Some(Override::Explicit(WhereFlag::Enabled(strategy))) => {
+                        Some(get_strategy_bounds(strategy, original))
+                    }
+                    None => get_full_override(original),
+                };
+                Ok(res)
+            };
+
+        let partial_eq = get_where_flag_bounds(partial_eq, self.partial_eq.as_ref())?;
+        let eq = get_where_flag_bounds(eq, self.eq.as_ref())?;
+        let partial_ord = get_where_flag_bounds(partial_ord, self.partial_ord.as_ref())?;
+        let ord = get_where_flag_bounds(ord, self.ord.as_ref())?;
+        let hash = get_where_flag_bounds(hash, self.hash.as_ref())?;
+
+        if warn_redundant {
+            if let Some(where_span) = where_span {
+                if !override_clause_used.get() {
+                    emit_warning!(where_span, "`where` redundant since all Equivalence traits have manually specified bounds")
                 }
             }
-            Ok(base_traits.clone())
-        } else {
-            Ok(Self::compute_base_traits(
-                full,
-                partial_eq,
-                eq,
-                partial_ord,
-                ord,
-                hash,
-                warn_redundant,
-            )?
-            .unwrap_or_else(|| EquivalenceBounds::all_empty(Span::call_site())))
+            if let Some(full_span) = full {
+                if !full_override_used.get() {
+                    emit_warning!(
+                        full_span,
+                        "`full` flag redundant since all Equivalence traits are enabled manually"
+                    )
+                }
+            }
+            if let Some(infer_generics_span) = infer_generics_span {
+                if !infer_generics_used.get() {
+                    emit_warning!(infer_generics_span, "`infer_generics` flag redundant since generic inference has been set manually for all traits")
+                }
+            }
         }
+
+        Ok(EquivalenceBounds {
+            partial_eq,
+            eq,
+            partial_ord,
+            ord,
+            hash,
+        })
     }
 }
 
@@ -680,4 +706,40 @@ impl FromMeta for FwdMethod {
             Ok(FwdMethod::Delegate)
         }
     }
+}
+
+#[derive(Debug, Clone)]
+enum WhereFlag {
+    Enabled(WhereStrategy),
+    Disabled,
+}
+
+impl FromMeta for WhereFlag {
+    fn from_list(items: &[syn::NestedMeta]) -> darling::Result<Self> {
+        WhereStrategy::from_list(items).map(WhereFlag::Enabled)
+    }
+
+    fn from_string(value: &str) -> darling::Result<Self> {
+        Ok(WhereFlag::Enabled(WhereStrategy {
+            where_: Override::Explicit(WhereClause::from_string(value)?),
+            infer: None,
+        }))
+    }
+
+    fn from_bool(value: bool) -> darling::Result<Self> {
+        if value {
+            Ok(WhereFlag::Enabled(WhereStrategy {
+                where_: Override::Inherit,
+                infer: None,
+            }))
+        } else {
+            Ok(WhereFlag::Disabled)
+        }
+    }
+}
+
+#[derive(Debug, Clone, FromMeta)]
+struct WhereStrategy {
+    where_: Override<WhereClause>,
+    infer: Option<Override<bool>>,
 }

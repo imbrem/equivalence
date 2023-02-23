@@ -63,31 +63,7 @@ pub(crate) struct EquivalenceBounds {
 pub(crate) struct ImplBounds {
     pub(crate) clause: WhereClause,
     pub(crate) generics: Generics,
-}
-
-impl ImplBounds {
-    pub(crate) fn with_default_generics(clause: WhereClause) -> ImplBounds {
-        ImplBounds {
-            clause,
-            generics: Generics::default(),
-        }
-    }
-}
-
-impl EquivalenceBounds {
-    pub(crate) fn all_empty(span: Span) -> EquivalenceBounds {
-        let clause = Some(ImplBounds {
-            clause: true_where_clause(span),
-            generics: Generics::default(),
-        });
-        EquivalenceBounds {
-            partial_eq: clause.clone(),
-            eq: clause.clone(),
-            partial_ord: clause.clone(),
-            ord: clause.clone(),
-            hash: clause,
-        }
-    }
+    pub(crate) infer: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -237,4 +213,11 @@ pub(crate) enum FwdMethod {
     Map(Expr),
     MapRec(Expr),
     WithFn(Expr),
+}
+
+pub(crate) fn true_where_clause(span: Span) -> WhereClause {
+    WhereClause {
+        where_token: Where { span },
+        predicates: Punctuated::default(),
+    }
 }
