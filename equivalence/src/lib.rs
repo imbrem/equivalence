@@ -638,7 +638,7 @@ where
 
 /// A macro to implement `PartialEqWith` by delegating to the `PartialEq` implementation, ignoring the context
 #[macro_export]
-macro_rules! pod_partial_eq_with {
+macro_rules! delegate_partial_eq_with {
     ($ty:ty) => {
         impl<C: ?Sized, T: ?Sized> PartialEqWith<C, T> for $ty
         where
@@ -654,16 +654,16 @@ macro_rules! pod_partial_eq_with {
 
 /// A macro to implement `EqWith`
 #[macro_export]
-macro_rules! pod_eq_with {
+macro_rules! delegate_eq_with {
     ($ty:ty) => {
-        $crate::pod_partial_eq_with!($ty);
+        $crate::delegate_partial_eq_with!($ty);
         impl<C: ?Sized> EqWith<C> for $ty where $ty: Eq {}
     };
 }
 
 /// A macro to implement `PartialOrdWith` by delegating to the `PartialOrd` implementation, ignoring the context
 #[macro_export]
-macro_rules! pod_partial_ord_with {
+macro_rules! delegate_partial_ord_with {
     ($ty:ty) => {
         impl<C: ?Sized, T: ?Sized> PartialOrdWith<C, T> for $ty
         where
@@ -679,9 +679,9 @@ macro_rules! pod_partial_ord_with {
 
 /// A macro to implement `OrdWith` and `PartialOrdWith` by delegating to the `Ord` and `PartialOrd` implementation, ignoring the context
 #[macro_export]
-macro_rules! pod_ord_with {
+macro_rules! delegate_ord_with {
     ($ty:ty) => {
-        $crate::pod_partial_ord_with!($ty);
+        $crate::delegate_partial_ord_with!($ty);
 
         impl<C: ?Sized> OrdWith<C> for $ty
         where
@@ -697,7 +697,7 @@ macro_rules! pod_ord_with {
 
 /// A macro to implement `HashWith` by delegating to the `Hash` implementation, ignoring the context
 #[macro_export]
-macro_rules! pod_hash_with {
+macro_rules! delegate_hash_with {
     ($ty:ty) => {
         impl<C: ?Sized> HashWith<C> for $ty
         where
@@ -714,12 +714,12 @@ macro_rules! pod_hash_with {
 
 /// A macro to implement `PartialEqWith`, `EqWith`, `PartialOrdWith`, `OrdWith`, and `HashWith` by delegating to their standard implementations, ignoring the context
 #[macro_export]
-macro_rules! pod_equiv {
+macro_rules! delegate_equiv {
     ($ty:ty) => {
-        $crate::pod_eq_with!($ty);
-        $crate::pod_ord_with!($ty);
-        $crate::pod_hash_with!($ty);
+        $crate::delegate_eq_with!($ty);
+        $crate::delegate_ord_with!($ty);
+        $crate::delegate_hash_with!($ty);
     };
 }
 
-pod_equiv!(());
+delegate_equiv!(());
