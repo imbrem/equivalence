@@ -15,7 +15,7 @@ pub(crate) struct EquivalenceOptsParser {
     partial_ord: Option<Override<WhereFlag>>,
     ord: Option<Override<WhereFlag>>,
     hash: Option<Override<WhereFlag>>,
-    ctx: Option<Ident>,
+    ctx: Option<String>,
     #[darling(multiple)]
     fwd: Vec<FwdOptsParser>,
     #[darling(rename = "where", default)]
@@ -29,7 +29,7 @@ pub(crate) struct EquivalenceOptsParser {
 impl FromDeriveInput for EquivalenceDerivation {
     fn from_derive_input(input: &syn::DeriveInput) -> darling::Result<Self> {
         let opts = EquivalenceOptsParser::from_derive_input(input)?;
-        let base_traits = EquivalenceBounds::compute_base_traits(
+        let base_bounds = EquivalenceBounds::compute_base_traits(
             opts.full,
             opts.infer_generics,
             opts.partial_eq.clone(),
@@ -43,81 +43,88 @@ impl FromDeriveInput for EquivalenceDerivation {
         )?;
         let base_fwds = Fwds::new(opts.fwd.clone());
 
+        let mut rels = HashMap::with_capacity(opts.rel.len());
+
         // If no relations specified, insert default relation
         if opts.rel.is_empty() {
-            abort!(Span::call_site(), "default relation not yet supported")
+            let ctx_name = opts.ctx.unwrap_or("C".to_string());
+            let ctx = Type::from_string(ctx_name.as_str())?;
+            let ident = &opts.ident;
+            let generics = &opts.generics;
+            let ty = Type::from_string(&format!("{}", quote! { #ident #generics }))?;
+            rels.insert(
+                ctx_name,
+                RelDesc {
+                    ctx,
+                    ty,
+                    bounds: base_bounds,
+                },
+            );
         } else if let Some(ctx) = &opts.ctx {
             abort!(
                 ctx.span(),
                 "setting the context type variable name is not defined if a relation is given"
             )
-        }
-
-        if opts.where_.is_some() {
-            //TODO: fix this
-            abort!(Span::call_site(), "where clauses not yet supported")
-        }
-
-        let mut rels = HashMap::with_capacity(opts.rel.len());
-
-        for rel in opts.rel {
-            let (name, ctx) = match (&rel.0.name, &rel.0.ty) {
-                (None, Some(ty)) => (format!("{:?}", ty), ty.clone()),
-                (Some(name), None) => match syn::parse_str::<Type>(name) {
-                    Ok(ty) => (name.to_string(), ty),
-                    Err(err) => abort!(
-                        name.span(),
-                        "no type specified, and name {:?} is not a valid type",
-                        **name;
-                        help = err
-                    ),
-                },
-                (Some(name), Some(ty)) => (name.to_string(), ty.clone()),
-                (None, None) => abort!(
-                    rel.span(),
-                    "one of relation name or relation type must be specified"
-                ),
-            };
-
-            let ty = if opts.generics.params.is_empty() && rel.0.param.is_empty() {
-                syn::parse_str::<Type>(&opts.ident.to_string())
-                    .expect("a struct's ident should always be a valid type...")
-            } else {
-                //TODO: fix this
-                abort!(Span::call_site(), "generics not yet supported")
-            };
-
-            if rel.0.where_.is_some() {
-                //TODO: fix this
-                abort!(
-                    Span::call_site(),
-                    "relation-specific where clauses not yet supported"
-                )
-            }
-
-            let bounds = base_traits.specify(
-                rel.0.full.clone(),
-                rel.0.infer_generics.clone(),
-                rel.0.partial_eq.clone(),
-                rel.0.eq.clone(),
-                rel.0.partial_ord.clone(),
-                rel.0.ord.clone(),
-                rel.0.hash.clone(),
-                rel.0.where_.clone(),
-                &opts.generics,
-                false,
-                true,
-            )?;
-
-            match rels.entry(name) {
-                std::collections::hash_map::Entry::Occupied(o) => {
-                    abort! {
+        } else {
+            for rel in opts.rel {
+                let (name, ctx) = match (&rel.0.name, &rel.0.ty) {
+                    (None, Some(ty)) => (format!("{:?}", ty), ty.clone()),
+                    (Some(name), None) => match syn::parse_str::<Type>(name) {
+                        Ok(ty) => (name.to_string(), ty),
+                        Err(err) => abort!(
+                            name.span(),
+                            "no type specified, and name {:?} is not a valid type",
+                            **name;
+                            help = err
+                        ),
+                    },
+                    (Some(name), Some(ty)) => (name.to_string(), ty.clone()),
+                    (None, None) => abort!(
                         rel.span(),
-                        "duplicate relation name {:?}", o.get()
-                    }
+                        "one of relation name or relation type must be specified"
+                    ),
+                };
+
+                let ty = if opts.generics.params.is_empty() && rel.0.param.is_empty() {
+                    syn::parse_str::<Type>(&opts.ident.to_string())
+                        .expect("a struct's ident should always be a valid type...")
+                } else {
+                    //TODO: fix this
+                    abort!(Span::call_site(), "generics not yet supported")
+                };
+
+                if rel.0.where_.is_some() {
+                    //TODO: fix this
+                    abort!(
+                        Span::call_site(),
+                        "relation-specific where clauses not yet supported"
+                    )
                 }
-                std::collections::hash_map::Entry::Vacant(v) => {
-                    v.insert(RelDesc { ctx, ty, bounds });
+
+                let bounds = base_bounds.specify(
+                    rel.0.full.clone(),
+                    rel.0.infer_generics.clone(),
+                    rel.0.partial_eq.clone(),
+                    rel.0.eq.clone(),
+                    rel.0.partial_ord.clone(),
+                    rel.0.ord.clone(),
+                    rel.0.hash.clone(),
+                    rel.0.where_.clone(),
+                    &opts.generics,
+                    false,
+                    true,
+                )?;
+
+                match rels.entry(name) {
+                    std::collections::hash_map::Entry::Occupied(o) => {
+                        abort! {
+                            rel.span(),
+                            "duplicate relation name {:?}", o.get()
+                        }
+                    }
+                    std::collections::hash_map::Entry::Vacant(v) => {
+                        v.insert(RelDesc { ctx, ty, bounds });
+                    }
                 }
             }
         }
