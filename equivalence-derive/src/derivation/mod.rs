@@ -1,4 +1,4 @@
-use syn::{Index, Member};
+use syn::{Generics, Index, Member};
 
 use super::*;
 
@@ -52,16 +52,34 @@ pub(crate) struct RelDesc {
 
 #[derive(Debug, Clone)]
 pub(crate) struct EquivalenceBounds {
-    pub(crate) partial_eq: Option<WhereClause>,
-    pub(crate) eq: Option<WhereClause>,
-    pub(crate) partial_ord: Option<WhereClause>,
-    pub(crate) ord: Option<WhereClause>,
-    pub(crate) hash: Option<WhereClause>,
+    pub(crate) partial_eq: Option<ImplBounds>,
+    pub(crate) eq: Option<ImplBounds>,
+    pub(crate) partial_ord: Option<ImplBounds>,
+    pub(crate) ord: Option<ImplBounds>,
+    pub(crate) hash: Option<ImplBounds>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ImplBounds {
+    pub(crate) clause: WhereClause,
+    pub(crate) generics: Generics,
+}
+
+impl ImplBounds {
+    pub(crate) fn with_default_generics(clause: WhereClause) -> ImplBounds {
+        ImplBounds {
+            clause,
+            generics: Generics::default(),
+        }
+    }
 }
 
 impl EquivalenceBounds {
     pub(crate) fn all_empty(span: Span) -> EquivalenceBounds {
-        let clause = Some(true_where_clause(span));
+        let clause = Some(ImplBounds {
+            clause: true_where_clause(span),
+            generics: Generics::default(),
+        });
         EquivalenceBounds {
             partial_eq: clause.clone(),
             eq: clause.clone(),

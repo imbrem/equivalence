@@ -1,6 +1,7 @@
 use super::*;
 
 mod utils;
+use syn::Generics;
 pub(crate) use utils::*;
 
 #[derive(Debug, FromDeriveInput)]
@@ -223,29 +224,38 @@ impl EquivalenceBounds {
                             "if `full` flag is set to `true`, setting other `equiv` flags to `true` (vs a `where` clause) is redundant"
                         )
                     }
+                    //TODO: fix these
                     Ok(Some(EquivalenceBounds {
-                        partial_eq: Some(
-                            partial_eq
+                        partial_eq: Some(ImplBounds {
+                            clause: partial_eq
                                 .into_where_clause()
                                 .unwrap_or(true_where_clause(full.where_span())),
-                        ),
-                        eq: Some(
-                            eq.into_where_clause()
-                                .unwrap_or(true_where_clause(full.where_span())),
-                        ),
-                        partial_ord: Some(
-                            partial_ord
+                            generics: Generics::default(),
+                        }),
+                        eq: Some(ImplBounds {
+                            clause: eq
                                 .into_where_clause()
                                 .unwrap_or(true_where_clause(full.where_span())),
-                        ),
-                        ord: Some(
-                            ord.into_where_clause()
+                            generics: Generics::default(),
+                        }),
+                        partial_ord: Some(ImplBounds {
+                            clause: partial_ord
+                                .into_where_clause()
                                 .unwrap_or(true_where_clause(full.where_span())),
-                        ),
-                        hash: Some(
-                            hash.into_where_clause()
+                            generics: Generics::default(),
+                        }),
+                        ord: Some(ImplBounds {
+                            clause: ord
+                                .into_where_clause()
                                 .unwrap_or(true_where_clause(full.where_span())),
-                        ),
+                            generics: Generics::default(),
+                        }),
+                        hash: Some(ImplBounds {
+                            clause: hash
+                                .into_where_clause()
+                                .unwrap_or(true_where_clause(full.where_span())),
+                            generics: Generics::default(),
+                        }),
                     }))
                 }
             }
@@ -257,11 +267,21 @@ impl EquivalenceBounds {
             }
             None if all_unset => Ok(None),
             None => {
-                let eq = eq.into_where_clause();
-                let ord = ord.into_where_clause();
-                let hash = hash.into_where_clause();
-                let partial_eq = partial_eq.into_where_clause();
-                let partial_ord = partial_ord.into_where_clause();
+                let eq = eq
+                    .into_where_clause()
+                    .map(ImplBounds::with_default_generics);
+                let ord = ord
+                    .into_where_clause()
+                    .map(ImplBounds::with_default_generics);
+                let hash = hash
+                    .into_where_clause()
+                    .map(ImplBounds::with_default_generics);
+                let partial_eq = partial_eq
+                    .into_where_clause()
+                    .map(ImplBounds::with_default_generics);
+                let partial_ord = partial_ord
+                    .into_where_clause()
+                    .map(ImplBounds::with_default_generics);
                 Ok(Some(EquivalenceBounds {
                     partial_eq,
                     eq,
@@ -377,8 +397,12 @@ impl Fwds {
                         let o = o.get_mut();
                         let mut old = FwdMethods::default();
                         std::mem::swap(o, &mut old);
-                        *o = FwdMethods::compute_element_desc(Cow::Owned(f.methods), Cow::Owned(old), true)
-                            .into_owned();
+                        *o = FwdMethods::compute_element_desc(
+                            Cow::Owned(f.methods),
+                            Cow::Owned(old),
+                            true,
+                        )
+                        .into_owned();
                     }
                     std::collections::hash_map::Entry::Vacant(v) => {
                         v.insert(f.methods);

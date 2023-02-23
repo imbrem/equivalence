@@ -3,112 +3,65 @@ use super::*;
 impl ContextDerivation {
     /// Synthesize code for a derivation
     pub(crate) fn synthesize(&self, result: &mut TokenStream2) {
-        if let Some(clause) = &self.rel.bounds.partial_eq {
-            self.synthesize_partial_eq(clause, result)
-        }
-        if let Some(clause) = &self.rel.bounds.eq {
-            self.synthesize_eq(clause, result)
-        }
-        let delegate_partial = if let Some(ord_clause) = &self.rel.bounds.ord {
-            //TODO: fix this once has_partial_spec is added
-            let delegate_partial = /*if let Some(partial_ord_clause) = &self.traits.partial_ord {
-            ord_clause == partial_ord_clause
-        } else */{
-            false
-        };
-            self.synthesize_cmp(ord_clause, delegate_partial, result);
-            delegate_partial
-        } else {
-            false
-        };
-        if !delegate_partial {
-            if let Some(clause) = &self.rel.bounds.partial_ord {
-                self.synthesize_partial_cmp(clause, result);
-            }
-        }
-        if let Some(clause) = &self.rel.bounds.hash {
-            self.synthesize_hash(clause, result)
-        }
-    }
-
-    /// Synthesize code for partial equality, given a where clause
-    fn synthesize_partial_eq(&self, clause: &WhereClause, result: &mut TokenStream2) {
         let ty = &self.rel.ty;
         let ctx = &self.rel.ctx;
-        let imp = self.synthesize_binary_trait_impl(BinaryTrait::PartialEq);
-        result.extend(quote! {
-            impl ::equivalence::PartialEqWith<#ctx> for #ty #clause {
-                fn eq_with(&self, other: &Self, ctx: &#ctx) -> bool {
-                    #imp
+        if let Some(bounds) = &self.rel.bounds.partial_eq {
+            let clause = &bounds.clause;
+            let generics = &bounds.generics;
+            let imp = self.synthesize_binary_trait_impl(BinaryTrait::PartialEq);
+            result.extend(quote! {
+                impl #generics ::equivalence::PartialEqWith<#ctx> for #ty #clause {
+                    fn eq_with(&self, other: &Self, ctx: &#ctx) -> bool {
+                        #imp
+                    }
                 }
-            }
-        })
-    }
-
-    /// Synthesize code for equality, given a where clause
-    fn synthesize_eq(&self, clause: &WhereClause, result: &mut TokenStream2) {
-        let ty = &self.rel.ty;
-        let ctx = &self.rel.ctx;
-        result.extend(quote! {
-            impl ::equivalence::EqWith<#ctx> for #ty #clause {}
-        })
-    }
-
-    /// Synthesize code for partial comparison, given a where clause
-    fn synthesize_partial_cmp(&self, clause: &WhereClause, result: &mut TokenStream2) {
-        let ty = &self.rel.ty;
-        let ctx = &self.rel.ctx;
-        let imp = self.synthesize_binary_trait_impl(BinaryTrait::PartialOrd);
-        result.extend(quote! {
-        impl ::equivalence::PartialOrdWith<#ctx> for #ty #clause {
-            fn partial_cmp_with(&self, other: &Self, ctx: &#ctx) -> Option<::core::cmp::Ordering> {
-                #imp
-            }
+            })
         }
-    })
-    }
-
-    /// Synthesize code for comparison, given a where clause
-    ///
-    /// If `delegate_partial` is true, generates partial comparison code with the same where clause as well
-    fn synthesize_cmp(
-        &self,
-        clause: &WhereClause,
-        delegate_partial: bool,
-        result: &mut TokenStream2,
-    ) {
-        if delegate_partial {
-            //TODO: fix this
-            abort! {
-                Span::call_site(),
-                "partial delegation not yet implemented"
-            }
+        if let Some(bounds) = &self.rel.bounds.eq {
+            let clause = &bounds.clause;
+            let generics = &bounds.generics;
+            result.extend(quote! {
+                impl #generics ::equivalence::EqWith<#ctx> for #ty #clause {}
+            })
         }
-        let ty = &self.rel.ty;
-        let ctx = &self.rel.ctx;
-        let imp = self.synthesize_binary_trait_impl(BinaryTrait::Ord);
-        result.extend(quote! {
-            impl ::equivalence::OrdWith<#ctx> for #ty #clause {
-                fn cmp_with(&self, other: &Self, ctx: &#ctx) -> ::core::cmp::Ordering {
-                    #imp
+        //TODO: implement delegate partial_cmp optimization...
+        if let Some(bounds) = &self.rel.bounds.partial_ord {
+            let clause = &bounds.clause;
+            let generics = &bounds.generics;
+            let imp = self.synthesize_binary_trait_impl(BinaryTrait::PartialOrd);
+            result.extend(quote! {
+                impl #generics ::equivalence::PartialOrdWith<#ctx> for #ty #clause {
+                    fn partial_cmp_with(&self, other: &Self, ctx: &#ctx) -> Option<::core::cmp::Ordering> {
+                        #imp
+                    }
                 }
-            }
-        })
-    }
-
-    /// Synthesize code for hashing, given a where clause
-    fn synthesize_hash(&self, clause: &WhereClause, result: &mut TokenStream2) {
-        let ty = &self.rel.ty;
-        let ctx = &self.rel.ctx;
-        let imp = self.synthesize_hash_impl();
-        result.extend(quote! {
-            impl ::equivalence::HashWith<#ctx> for #ty #clause {
-                fn hash_with<H: ::core::hash::Hasher>(&self, hasher: &mut H, ctx: &#ctx) {
-                    use ::core::hash::Hash;
-                    #imp
+            });
+        }
+        if let Some(bounds) = &self.rel.bounds.ord {
+            let clause = &bounds.clause;
+            let generics = &bounds.generics;
+            let imp = self.synthesize_binary_trait_impl(BinaryTrait::Ord);
+            result.extend(quote! {
+                impl #generics ::equivalence::OrdWith<#ctx> for #ty #clause {
+                    fn cmp_with(&self, other: &Self, ctx: &#ctx) -> ::core::cmp::Ordering {
+                        #imp
+                    }
                 }
-            }
-        })
+            })
+        }
+        if let Some(bounds) = &self.rel.bounds.hash {
+            let clause = &bounds.clause;
+            let generics = &bounds.generics;
+            let imp = self.synthesize_hash_impl();
+            result.extend(quote! {
+                impl #generics ::equivalence::HashWith<#ctx> for #ty #clause {
+                    fn hash_with<H: ::core::hash::Hasher>(&self, hasher: &mut H, ctx: &#ctx) {
+                        use ::core::hash::Hash;
+                        #imp
+                    }
+                }
+            })
+        }
     }
 
     fn synthesize_binary_trait_impl(&self, tr: BinaryTrait) -> TokenStream2 {
