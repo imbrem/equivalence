@@ -11,7 +11,7 @@ pub struct CtxB;
 
 pub struct ModS {
     a: u32,
-    #[equiv(fwd)]
+    #[equiv(fwd(delegate))]
     b: u32,
     #[equiv(fwd(name = "CtxA", map = "|x, _| x % 2"))]
     #[equiv(fwd(name = "CtxB", map = "|x, _| x % 3"))]

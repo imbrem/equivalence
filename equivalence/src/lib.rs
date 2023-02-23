@@ -1,7 +1,7 @@
 /*!
 # Equivalence
 
-`equivalence` is a derive macro for automatically deriving comparison and hashing traits modulo an 
+`equivalence` is a derive macro for automatically deriving comparison and hashing traits modulo an
 [equivalence relation](https://en.wikipedia.org/wiki/Equivalence_relation), here determined by a context.
 Use cases include comparing data structures holding indices into an arena, comparing syntax trees modulo
 a union-find algorithm, comparing data structures modulo some equivalence relation on the elements, and more.
@@ -18,106 +18,14 @@ TODO: this
 
 use std::borrow::Cow;
 use std::hash::Hash;
-use std::num::{
-    NonZeroI128, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8, NonZeroIsize, NonZeroU128,
-    NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize,
-};
-// extern crate self as equivalence;
-// use equivalence_derive::Equivalence;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::{cmp::Ordering, hash::Hasher};
 
 use either::{for_both, Either};
 
+#[cfg(feature = "derive")]
 pub use equivalence_derive::Equivalence;
-
-/// A macro to implement `PartialEqWith` by delegating to the `PartialEq` implementation, ignoring the context
-#[macro_export]
-macro_rules! pod_partial_eq_with {
-    ($ty:ty) => {
-        impl<C: ?Sized, T: ?Sized> PartialEqWith<C, T> for $ty
-        where
-            $ty: PartialEq<T>,
-        {
-            #[inline(always)]
-            fn eq_with(&self, other: &T, _ctx: &C) -> bool {
-                *self == *other
-            }
-        }
-    };
-}
-
-/// A macro to implement `EqWith`
-#[macro_export]
-macro_rules! pod_eq_with {
-    ($ty:ty) => {
-        $crate::pod_partial_eq_with!($ty);
-        impl<C: ?Sized> EqWith<C> for $ty where $ty: Eq {}
-    };
-}
-
-/// A macro to implement `PartialOrdWith` by delegating to the `PartialOrd` implementation, ignoring the context
-#[macro_export]
-macro_rules! pod_partial_ord_with {
-    ($ty:ty) => {
-        impl<C: ?Sized, T: ?Sized> PartialOrdWith<C, T> for $ty
-        where
-            $ty: PartialOrd<T>,
-        {
-            #[inline(always)]
-            fn partial_cmp_with(&self, other: &T, _ctx: &C) -> Option<Ordering> {
-                self.partial_cmp(other)
-            }
-        }
-    };
-}
-
-/// A macro to implement `OrdWith` and `PartialOrdWith` by delegating to the `Ord` and `PartialOrd` implementation, ignoring the context
-#[macro_export]
-macro_rules! pod_ord_with {
-    ($ty:ty) => {
-        $crate::pod_partial_ord_with!($ty);
-
-        impl<C: ?Sized> OrdWith<C> for $ty
-        where
-            $ty: Ord,
-        {
-            #[inline(always)]
-            fn cmp_with(&self, other: &$ty, _ctx: &C) -> Ordering {
-                self.cmp(other)
-            }
-        }
-    };
-}
-
-
-/// A macro to implement `HashWith` by delegating to the `Hash` implementation, ignoring the context
-#[macro_export]
-macro_rules! pod_hash_with {
-    ($ty:ty) => {
-        impl<C: ?Sized> HashWith<C> for $ty
-        where
-            $ty: std::hash::Hash,
-        {
-            #[inline(always)]
-            fn hash_with<H: std::hash::Hasher>(&self, hasher: &mut H, _ctx: &C) {
-                use std::hash::Hash;
-                self.hash(hasher)
-            }
-        }
-    };
-}
-
-/// A macro to implement `PartialEqWith`, `EqWith`, `PartialOrdWith`, `OrdWith`, and `HashWith` by delegating to their standard implementations, ignoring the context
-#[macro_export]
-macro_rules! pod_equiv {
-    ($ty:ty) => {
-        $crate::pod_eq_with!($ty);
-        $crate::pod_ord_with!($ty);
-        $crate::pod_hash_with!($ty);
-    };
-}
 
 /// Values equipped with a partial equivalence relation modulo a context of type `C`
 pub trait PartialEqWith<C: ?Sized, T: ?Sized = Self> {
@@ -728,34 +636,90 @@ where
     }
 }
 
+/// A macro to implement `PartialEqWith` by delegating to the `PartialEq` implementation, ignoring the context
+#[macro_export]
+macro_rules! pod_partial_eq_with {
+    ($ty:ty) => {
+        impl<C: ?Sized, T: ?Sized> PartialEqWith<C, T> for $ty
+        where
+            $ty: PartialEq<T>,
+        {
+            #[inline(always)]
+            fn eq_with(&self, other: &T, _ctx: &C) -> bool {
+                *self == *other
+            }
+        }
+    };
+}
+
+/// A macro to implement `EqWith`
+#[macro_export]
+macro_rules! pod_eq_with {
+    ($ty:ty) => {
+        $crate::pod_partial_eq_with!($ty);
+        impl<C: ?Sized> EqWith<C> for $ty where $ty: Eq {}
+    };
+}
+
+/// A macro to implement `PartialOrdWith` by delegating to the `PartialOrd` implementation, ignoring the context
+#[macro_export]
+macro_rules! pod_partial_ord_with {
+    ($ty:ty) => {
+        impl<C: ?Sized, T: ?Sized> PartialOrdWith<C, T> for $ty
+        where
+            $ty: PartialOrd<T>,
+        {
+            #[inline(always)]
+            fn partial_cmp_with(&self, other: &T, _ctx: &C) -> Option<Ordering> {
+                self.partial_cmp(other)
+            }
+        }
+    };
+}
+
+/// A macro to implement `OrdWith` and `PartialOrdWith` by delegating to the `Ord` and `PartialOrd` implementation, ignoring the context
+#[macro_export]
+macro_rules! pod_ord_with {
+    ($ty:ty) => {
+        $crate::pod_partial_ord_with!($ty);
+
+        impl<C: ?Sized> OrdWith<C> for $ty
+        where
+            $ty: Ord,
+        {
+            #[inline(always)]
+            fn cmp_with(&self, other: &$ty, _ctx: &C) -> Ordering {
+                self.cmp(other)
+            }
+        }
+    };
+}
+
+/// A macro to implement `HashWith` by delegating to the `Hash` implementation, ignoring the context
+#[macro_export]
+macro_rules! pod_hash_with {
+    ($ty:ty) => {
+        impl<C: ?Sized> HashWith<C> for $ty
+        where
+            $ty: std::hash::Hash,
+        {
+            #[inline(always)]
+            fn hash_with<H: std::hash::Hasher>(&self, hasher: &mut H, _ctx: &C) {
+                use std::hash::Hash;
+                self.hash(hasher)
+            }
+        }
+    };
+}
+
+/// A macro to implement `PartialEqWith`, `EqWith`, `PartialOrdWith`, `OrdWith`, and `HashWith` by delegating to their standard implementations, ignoring the context
+#[macro_export]
+macro_rules! pod_equiv {
+    ($ty:ty) => {
+        $crate::pod_eq_with!($ty);
+        $crate::pod_ord_with!($ty);
+        $crate::pod_hash_with!($ty);
+    };
+}
+
 pod_equiv!(());
-pod_equiv!(u8);
-pod_equiv!(u16);
-pod_equiv!(u32);
-pod_equiv!(u64);
-pod_equiv!(u128);
-pod_equiv!(usize);
-pod_equiv!(i8);
-pod_equiv!(i16);
-pod_equiv!(i32);
-pod_equiv!(i64);
-pod_equiv!(i128);
-pod_equiv!(isize);
-pod_equiv!(NonZeroU8);
-pod_equiv!(NonZeroU16);
-pod_equiv!(NonZeroU32);
-pod_equiv!(NonZeroU64);
-pod_equiv!(NonZeroU128);
-pod_equiv!(NonZeroUsize);
-pod_equiv!(NonZeroI8);
-pod_equiv!(NonZeroI16);
-pod_equiv!(NonZeroI32);
-pod_equiv!(NonZeroI64);
-pod_equiv!(NonZeroI128);
-pod_equiv!(NonZeroIsize);
-pod_equiv!(String);
-pod_equiv!(str);
-pod_partial_eq_with!(f32);
-pod_partial_ord_with!(f32);
-pod_partial_eq_with!(f64);
-pod_partial_ord_with!(f64);
