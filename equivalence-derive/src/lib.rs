@@ -22,6 +22,8 @@ mod parser;
 use derivation::*;
 use parser::*;
 
+pub(crate) type IdentMap = HashMap<Ident, Ident>;
+
 #[proc_macro_error]
 #[proc_macro_derive(Equivalence, attributes(equiv, fwd))]
 pub fn derive_equivalence(input: TokenStream) -> TokenStream {
@@ -40,8 +42,6 @@ pub fn derive_equivalence(input: TokenStream) -> TokenStream {
     // Synthesize and return output
     let mut result = quote! {};
     derivation.synthesize(&mut result);
-
-    // panic!("i should be {result}");
 
     result.into()
 }

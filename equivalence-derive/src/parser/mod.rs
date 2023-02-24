@@ -30,13 +30,16 @@ pub(crate) struct EquivalenceOptsParser {
     ident: Ident,
     infer_generics: Option<SpannedValue<Override<bool>>>,
     defaults: Option<Punctuated<TypeParam, Comma>>,
+    het: Option<SpannedValue<Override<bool>>>,
 }
 
 impl FromDeriveInput for EquivalenceDerivation {
     fn from_derive_input(input: &syn::DeriveInput) -> darling::Result<Self> {
+        const DEFAULT_HET: bool = false;
+
         let mut hasher = FnvHasher::default();
         input.hash(&mut hasher);
-        let hash = hasher.finish();
+        let hash = hasher.finish() % 1;
 
         let opts = EquivalenceOptsParser::from_derive_input(input)?;
         let base_bounds = EquivalenceBounds::compute_base_traits(
@@ -52,6 +55,30 @@ impl FromDeriveInput for EquivalenceDerivation {
         )?;
         let base_fwds = Fwds::new(opts.fwd.clone());
 
+        if let Some(defaults) = &opts.defaults {
+            abort!(defaults.span(), "defaults not yet supported")
+        }
+
+        let mut het_used = opts.het.is_none();
+        let het_value = match opts.het {
+            Some(het) => (&*het).clone().unwrap_or(true),
+            None => DEFAULT_HET,
+        };
+        let mut het = || {
+            het_used = true;
+            het_value
+        };
+
+        let mut het_params = HashMap::with_capacity_and_hasher(
+            opts.generics.type_params().count(),
+            Default::default(),
+        );
+        het_params.extend(opts.generics.type_params().map(|param| {
+            let ident = param.ident.clone();
+            let het_ident = Ident::new(&format!("{ident}{hash}"), Span::call_site());
+            (param.ident.clone(), het_ident)
+        }));
+
         let mut rels = HashMap::with_capacity_and_hasher(opts.rel.len(), Default::default());
 
         let type_set: IdentSet = opts
@@ -59,10 +86,6 @@ impl FromDeriveInput for EquivalenceDerivation {
             .type_params()
             .map(|ty| ty.ident.clone())
             .collect();
-
-        if let Some(defaults) = &opts.defaults {
-            abort!(defaults.span(), "defaults not yet supported")
-        }
 
         // If no relations specified, insert default relation
         if opts.rel.is_empty() {
@@ -87,6 +110,7 @@ impl FromDeriveInput for EquivalenceDerivation {
                     ctx,
                     bounds: base_bounds,
                     params: Punctuated::from_iter([param]),
+                    het: het(),
                 },
             );
         } else if let Some(ctx) = &opts.ctx {
@@ -131,6 +155,11 @@ impl FromDeriveInput for EquivalenceDerivation {
                     abort!(defaults.span(), "defaults not yet supported")
                 }
 
+                let het = match &rel.0.het {
+                    Some(flag) => (&**flag).clone().unwrap_or_else(&mut het),
+                    None => het(),
+                };
+
                 match rels.entry(name) {
                     std::collections::hash_map::Entry::Occupied(o) => {
                         abort! {
@@ -143,11 +172,14 @@ impl FromDeriveInput for EquivalenceDerivation {
                             ctx,
                             bounds,
                             params: rel.0.params.clone().unwrap_or_default(),
+                            het,
                         });
                     }
                 }
             }
         }
+
+        if !het_used {}
 
         Ok(EquivalenceDerivation {
             rels,
@@ -157,6 +189,7 @@ impl FromDeriveInput for EquivalenceDerivation {
             ident: opts.ident,
             generics: opts.generics,
             type_set,
+            het_params,
         })
     }
 }
@@ -176,6 +209,7 @@ struct RelOptsParser {
     #[darling(rename = "where")]
     where_: Option<WhereClause>,
     infer_generics: Option<SpannedValue<Override<bool>>>,
+    het: Option<SpannedValue<Override<bool>>>,
 }
 
 #[derive(Debug, Clone)]

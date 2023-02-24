@@ -4,9 +4,24 @@ impl ContextDerivation {
     /// Synthesize code for a derivation
     pub(crate) fn synthesize(&self, result: &mut TokenStream2) {
         let ty = &self.ty;
+        let het_ty = &self.het_ty;
         let ctx = &self.rel.ctx;
 
         let (impl_generics, _, where_) = self.generics.split_for_impl();
+
+        let mut het_generics: Punctuated<Ident, Comma> = Punctuated::new();
+        for param in self.generics.type_params() {
+            het_generics.push(param.ident.clone());
+            if let Some(het) = self.het_params.get(&param.ident) {
+                het_generics.push(het.clone())
+            }
+        }
+
+        let het_generics = if het_generics.is_empty() {
+            quote! {}
+        } else {
+            quote! {<#het_generics>}
+        };
 
         if let Some(bounds) = &self.rel.bounds.partial_eq {
             let mut clause = bounds.clause.clone();
@@ -15,8 +30,8 @@ impl ContextDerivation {
             }
             let imp = self.synthesize_binary_trait_impl(BinaryTrait::PartialEq);
             result.extend(quote! {
-                impl #impl_generics ::equivalence::PartialEqWith<#ctx> for #ty #clause {
-                    fn eq_with(&self, other: &Self, ctx: &#ctx) -> bool {
+                impl #het_generics ::equivalence::PartialEqWith<#ctx, #het_ty> for #ty #clause {
+                    fn eq_with(&self, other: &#het_ty, ctx: &#ctx) -> bool {
                         #imp
                     }
                 }
@@ -39,8 +54,8 @@ impl ContextDerivation {
             }
             let imp = self.synthesize_binary_trait_impl(BinaryTrait::PartialOrd);
             result.extend(quote! {
-                impl #impl_generics ::equivalence::PartialOrdWith<#ctx> for #ty #clause {
-                    fn partial_cmp_with(&self, other: &Self, ctx: &#ctx) -> Option<::core::cmp::Ordering> {
+                impl #het_generics ::equivalence::PartialOrdWith<#ctx, #het_ty> for #ty #clause {
+                    fn partial_cmp_with(&self, other: &#het_ty, ctx: &#ctx) -> Option<::core::cmp::Ordering> {
                         #imp
                     }
                 }

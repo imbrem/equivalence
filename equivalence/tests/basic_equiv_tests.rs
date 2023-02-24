@@ -9,6 +9,10 @@ pub struct CtxB;
 pub struct Container<T>(#[equiv(fwd)] T, T);
 
 #[derive(Equivalence)]
+#[equiv(het)]
+pub struct ContainerHet<T>(#[equiv(fwd)] T, T);
+
+#[derive(Equivalence)]
 #[equiv(rel(name = "CtxA"))]
 #[equiv(rel = "CtxB")]
 

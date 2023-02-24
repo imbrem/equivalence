@@ -17,6 +17,7 @@ pub(crate) struct EquivalenceDerivation {
     pub(crate) ident: Ident,
     pub(crate) generics: Generics,
     pub(crate) type_set: IdentSet,
+    pub(crate) het_params: HashMap<Ident, Ident>,
 }
 
 impl EquivalenceDerivation {
@@ -27,24 +28,39 @@ impl EquivalenceDerivation {
                 .element_desc(&name, &FwdMethods::all_delegate())
                 .into_owned();
 
+            let het_params = if rel.het {
+                self.het_params.clone()
+            } else {
+                IdentMap::default()
+            };
+
             let data = self
                 .data
                 .as_ref()
                 .map_enum_variants(|v| {
                     let desc = v.parse_to_desc(&name, &curr_desc);
-                    desc.infer_bounds(&mut rel.bounds, &self.type_set, &rel.ctx);
+                    desc.infer_bounds(&mut rel.bounds, &self.type_set, &het_params, &rel.ctx);
                     desc
                 })
                 .map_struct_fields(|f| {
                     let desc = f.parse_to_desc(&name, &curr_desc);
-                    desc.infer_bounds(&mut rel.bounds, &self.type_set, &rel.ctx);
+                    desc.infer_bounds(&mut rel.bounds, &self.type_set, &het_params, &rel.ctx);
                     desc
                 });
 
             let mut generics = self.generics.clone();
             let (_, ty_generics, _) = generics.split_for_impl();
             let ident = self.ident.clone();
-            let ty = syn::parse_quote!(#ident #ty_generics);
+            let ty: Type = syn::parse_quote!(#ident #ty_generics);
+            let mut params: Punctuated<Ident, Comma> = Punctuated::new();
+            for param in generics.type_params() {
+                params.push(het_params.get(&param.ident).unwrap_or(&param.ident).clone())
+            }
+            let het_ty = if params.is_empty() {
+                ty.clone()
+            } else {
+                syn::parse_quote!(#ident <#params>)
+            };
 
             for param in &rel.params {
                 generics.params.push(param.clone().into())
@@ -53,9 +69,11 @@ impl EquivalenceDerivation {
             ContextDerivation {
                 ident,
                 ty,
+                het_ty,
                 rel,
                 data,
                 generics,
+                het_params,
             }
         })
     }
@@ -72,6 +90,7 @@ pub(crate) struct RelDesc {
     pub(crate) ctx: Type,
     pub(crate) bounds: EquivalenceBounds,
     pub(crate) params: Punctuated<TypeParam, Comma>,
+    pub(crate) het: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -99,9 +118,11 @@ pub(crate) struct Fwds {
 pub(crate) struct ContextDerivation {
     ident: Ident,
     ty: Type,
+    het_ty: Type,
     rel: RelDesc,
     data: Data<VariantDesc, FieldDesc>,
     generics: Generics,
+    het_params: IdentMap,
 }
 
 #[derive(Debug, Clone)]
@@ -123,8 +144,15 @@ impl FieldOpts {
 }
 
 impl FieldDesc {
-    fn infer_bounds(&self, bounds: &mut EquivalenceBounds, type_set: &IdentSet, ctx: &Type) {
-        self.fwd.infer_bounds(&self.ty, bounds, type_set, ctx)
+    fn infer_bounds(
+        &self,
+        bounds: &mut EquivalenceBounds,
+        type_set: &IdentSet,
+        het_params: &IdentMap,
+        ctx: &Type,
+    ) {
+        self.fwd
+            .infer_bounds(&self.ty, bounds, type_set, het_params, ctx)
     }
 }
 
@@ -135,9 +163,15 @@ struct VariantDesc {
 }
 
 impl VariantDesc {
-    fn infer_bounds(&self, bounds: &mut EquivalenceBounds, type_set: &IdentSet, ctx: &Type) {
+    fn infer_bounds(
+        &self,
+        bounds: &mut EquivalenceBounds,
+        type_set: &IdentSet,
+        het_params: &IdentMap,
+        ctx: &Type,
+    ) {
         for field in self.fields.iter() {
-            field.infer_bounds(bounds, type_set, ctx)
+            field.infer_bounds(bounds, type_set, het_params, ctx)
         }
     }
 }
@@ -170,6 +204,7 @@ impl FwdMethods {
         ty: &Type,
         bounds: &mut EquivalenceBounds,
         type_set: &IdentSet,
+        het_params: &IdentMap,
         ctx: &Type,
     ) {
         let methods = [
@@ -200,7 +235,9 @@ impl FwdMethods {
             ),
         ];
         for (tr, method, bounds) in methods.into_iter() {
-            method.map(|eq| bounds.map(|bounds| eq.infer_bounds(tr, ty, bounds, type_set, ctx)));
+            method.map(|eq| {
+                bounds.map(|bounds| eq.infer_bounds(tr, ty, bounds, type_set, het_params, ctx))
+            });
         }
     }
 }
@@ -312,6 +349,41 @@ impl ToTokens for EquivalenceTrait {
 #[derive(Debug, Copy, Clone, PartialEq)]
 struct AssociatedTrait(EquivalenceTrait);
 
+struct WithCtx<'a> {
+    tr: EquivalenceTrait,
+    rec: bool,
+    het_ty: &'a Ident,
+    ctx: &'a Type,
+}
+
+impl ToTokens for WithCtx<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream2) {
+        if self.rec {
+            self.tr.to_tokens(tokens)
+        } else {
+            AssociatedTrait(self.tr).to_tokens(tokens)
+        }
+        let het_ty = self.het_ty;
+        let ctx = self.ctx;
+        if matches!(
+            self.tr,
+            EquivalenceTrait::PartialEqWith | EquivalenceTrait::PartialOrdWith
+        ) {
+            // Het traits
+            if self.rec {
+                tokens.extend(quote! {<#ctx, #het_ty>})
+            } else {
+                tokens.extend(quote! {<#het_ty>})
+            }
+        } else {
+            // Non-het traits
+            if self.rec {
+                tokens.extend(quote! {<#ctx>})
+            }
+        }
+    }
+}
+
 impl ToTokens for AssociatedTrait {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
         match self.0 {
@@ -342,28 +414,27 @@ impl FwdMethod {
         ty: &Type,
         bounds: &mut ImplBounds,
         type_set: &IdentSet,
+        het_params: &IdentMap,
         ctx: &Type,
     ) {
         if !bounds.infer {
             return;
         }
         // NOTE: we do not infer for map/maprec by default!
-        match self {
-            FwdMethod::Rec => {
-                for ty in ty.uses_type_params(&Purpose::BoundImpl.into(), type_set) {
-                    bounds
-                        .clause
-                        .predicates
-                        .push(syn::parse_quote!(#ty: #tr<#ctx>))
-                }
-            }
-            FwdMethod::Delegate => {
-                let tr = AssociatedTrait(tr);
-                for ty in ty.uses_type_params(&Purpose::BoundImpl.into(), type_set) {
-                    bounds.clause.predicates.push(syn::parse_quote!(#ty: #tr))
-                }
-            }
-            _ => {}
+        let rec = match self {
+            FwdMethod::Rec => true,
+            FwdMethod::Delegate => false,
+            _ => return,
+        };
+
+        for ty in ty.uses_type_params(&Purpose::BoundImpl.into(), type_set) {
+            let wctx = WithCtx {
+                tr,
+                rec,
+                het_ty: het_params.get(ty).unwrap_or(ty),
+                ctx,
+            };
+            bounds.clause.predicates.push(syn::parse_quote!(#ty: #wctx))
         }
     }
 }
