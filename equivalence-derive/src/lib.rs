@@ -1,4 +1,5 @@
-use std::{borrow::Cow, collections::HashMap};
+use fnv::FnvHashMap as HashMap;
+use std::borrow::Cow;
 
 use darling::{
     ast::Data,
@@ -39,5 +40,8 @@ pub fn derive_equivalence(input: TokenStream) -> TokenStream {
     // Synthesize and return output
     let mut result = quote! {};
     derivation.synthesize(&mut result);
+
+    // panic!("i should be {result}");
+
     result.into()
 }

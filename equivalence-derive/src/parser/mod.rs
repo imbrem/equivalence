@@ -1,8 +1,13 @@
-use std::cell::Cell;
+use std::{
+    cell::Cell,
+    hash::{Hash, Hasher},
+};
 
 use super::*;
 
-use syn::{Generics, TypeParam};
+use darling::usage::IdentSet;
+use fnv::FnvHasher;
+use syn::{token::Comma, TypeParam};
 
 #[derive(Debug, FromDeriveInput)]
 #[darling(attributes(equiv))]
@@ -24,10 +29,15 @@ pub(crate) struct EquivalenceOptsParser {
     generics: syn::Generics,
     ident: Ident,
     infer_generics: Option<SpannedValue<Override<bool>>>,
+    defaults: Option<Punctuated<TypeParam, Comma>>,
 }
 
 impl FromDeriveInput for EquivalenceDerivation {
     fn from_derive_input(input: &syn::DeriveInput) -> darling::Result<Self> {
+        let mut hasher = FnvHasher::default();
+        input.hash(&mut hasher);
+        let hash = hasher.finish();
+
         let opts = EquivalenceOptsParser::from_derive_input(input)?;
         let base_bounds = EquivalenceBounds::compute_base_traits(
             opts.full,
@@ -38,26 +48,45 @@ impl FromDeriveInput for EquivalenceDerivation {
             opts.ord.clone(),
             opts.hash.clone(),
             opts.where_.clone(),
-            &opts.generics,
             true,
         )?;
         let base_fwds = Fwds::new(opts.fwd.clone());
 
-        let mut rels = HashMap::with_capacity(opts.rel.len());
+        let mut rels = HashMap::with_capacity_and_hasher(opts.rel.len(), Default::default());
+
+        let type_set: IdentSet = opts
+            .generics
+            .type_params()
+            .map(|ty| ty.ident.clone())
+            .collect();
+
+        if let Some(defaults) = &opts.defaults {
+            abort!(defaults.span(), "defaults not yet supported")
+        }
 
         // If no relations specified, insert default relation
         if opts.rel.is_empty() {
-            let ctx_name = opts.ctx.unwrap_or("C".to_string());
+            // Use hash of crate to avoid collision
+            let ctx_name = if let Some(ctx) = opts.ctx {
+                ctx
+            } else {
+                format!("C{hash:x}")
+            };
             let ctx = Type::from_string(ctx_name.as_str())?;
-            let ident = &opts.ident;
-            let generics = &opts.generics;
-            let ty = Type::from_string(&format!("{}", quote! { #ident #generics }))?;
+            let param = TypeParam {
+                attrs: vec![],
+                ident: Ident::new(ctx_name.as_str(), Span::call_site()),
+                colon_token: None,
+                bounds: Punctuated::default(),
+                eq_token: None,
+                default: None,
+            };
             rels.insert(
                 ctx_name,
                 RelDesc {
                     ctx,
-                    ty,
                     bounds: base_bounds,
+                    params: Punctuated::from_iter([param]),
                 },
             );
         } else if let Some(ctx) = &opts.ctx {
@@ -85,22 +114,6 @@ impl FromDeriveInput for EquivalenceDerivation {
                     ),
                 };
 
-                let ty = if opts.generics.params.is_empty() && rel.0.param.is_empty() {
-                    syn::parse_str::<Type>(&opts.ident.to_string())
-                        .expect("a struct's ident should always be a valid type...")
-                } else {
-                    //TODO: fix this
-                    abort!(Span::call_site(), "generics not yet supported")
-                };
-
-                if rel.0.where_.is_some() {
-                    //TODO: fix this
-                    abort!(
-                        Span::call_site(),
-                        "relation-specific where clauses not yet supported"
-                    )
-                }
-
                 let bounds = base_bounds.specify(
                     rel.0.full.clone(),
                     rel.0.infer_generics.clone(),
@@ -110,10 +123,13 @@ impl FromDeriveInput for EquivalenceDerivation {
                     rel.0.ord.clone(),
                     rel.0.hash.clone(),
                     rel.0.where_.clone(),
-                    &opts.generics,
                     false,
                     true,
                 )?;
+
+                if let Some(defaults) = &rel.0.defaults {
+                    abort!(defaults.span(), "defaults not yet supported")
+                }
 
                 match rels.entry(name) {
                     std::collections::hash_map::Entry::Occupied(o) => {
@@ -123,7 +139,11 @@ impl FromDeriveInput for EquivalenceDerivation {
                         }
                     }
                     std::collections::hash_map::Entry::Vacant(v) => {
-                        v.insert(RelDesc { ctx, ty, bounds });
+                        v.insert(RelDesc {
+                            ctx,
+                            bounds,
+                            params: rel.0.params.clone().unwrap_or_default(),
+                        });
                     }
                 }
             }
@@ -135,6 +155,8 @@ impl FromDeriveInput for EquivalenceDerivation {
             base_fwds,
             data: opts.data,
             ident: opts.ident,
+            generics: opts.generics,
+            type_set,
         })
     }
 }
@@ -149,8 +171,8 @@ struct RelOptsParser {
     partial_ord: Option<Override<WhereFlag>>,
     ord: Option<Override<WhereFlag>>,
     hash: Option<Override<WhereFlag>>,
-    #[darling(multiple)]
-    param: Vec<TypeParam>,
+    params: Option<Punctuated<TypeParam, Comma>>,
+    defaults: Option<Punctuated<TypeParam, Comma>>,
     #[darling(rename = "where")]
     where_: Option<WhereClause>,
     infer_generics: Option<SpannedValue<Override<bool>>>,
@@ -195,7 +217,6 @@ impl EquivalenceBounds {
         ord: Option<Override<WhereFlag>>,
         hash: Option<Override<WhereFlag>>,
         where_: Option<WhereClause>,
-        generics: &Generics,
         warn_redundant: bool,
     ) -> Result<EquivalenceBounds, darling::Error> {
         EquivalenceBounds {
@@ -214,7 +235,6 @@ impl EquivalenceBounds {
             ord,
             hash,
             where_,
-            generics,
             true,
             warn_redundant,
         )
@@ -230,7 +250,6 @@ impl EquivalenceBounds {
         ord: Option<Override<WhereFlag>>,
         hash: Option<Override<WhereFlag>>,
         where_: Option<WhereClause>,
-        generics: &Generics,
         strong_full: bool,
         warn_redundant: bool,
     ) -> Result<EquivalenceBounds, darling::Error> {
@@ -275,7 +294,6 @@ impl EquivalenceBounds {
         let get_override = |original: Option<&ImplBounds>| ImplBounds {
             clause: get_override_clause(original),
             infer: get_infer_generics(original),
-            generics: generics.clone(),
         };
 
         let full_override_used = Cell::new(full.is_none());
@@ -300,11 +318,7 @@ impl EquivalenceBounds {
                 .infer
                 .map(|infer| infer.unwrap_or(true))
                 .unwrap_or_else(|| get_infer_generics(original));
-            ImplBounds {
-                clause,
-                infer,
-                generics: generics.clone(),
-            }
+            ImplBounds { clause, infer }
         };
 
         let get_where_flag_bounds =
@@ -372,12 +386,14 @@ struct FieldOptsParser {
     #[darling(multiple)]
     fwd: Vec<FwdOptsParser>,
     ident: Option<Ident>,
+    ty: Type,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct FieldOpts {
     pub(crate) fwds: Fwds,
     pub(crate) ident: Option<Ident>,
+    pub(crate) ty: Type,
 }
 
 impl FromField for FieldOpts {
@@ -387,6 +403,7 @@ impl FromField for FieldOpts {
         Ok(FieldOpts {
             fwds,
             ident: parsed.ident,
+            ty: parsed.ty,
         })
     }
 }
@@ -421,7 +438,7 @@ impl FromVariant for VariantOpts {
 
 impl Fwds {
     fn new(fwds: Vec<FwdOptsParser>) -> Fwds {
-        let mut fwd = HashMap::with_capacity(fwds.len());
+        let mut fwd = HashMap::with_capacity_and_hasher(fwds.len(), Default::default());
         let mut default_fwd = None;
         for f in fwds {
             if let Some(name) = f.name {

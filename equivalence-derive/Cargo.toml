@@ -9,6 +9,7 @@ proc-macro = true
 [dependencies]
 anyhow = "1.0.69"
 darling = "0.14.2"
+fnv = "1.0.7"
 proc-macro-error = "1.0.4"
 proc-macro2 = "1.0.50"
 quote = "1.0.23"

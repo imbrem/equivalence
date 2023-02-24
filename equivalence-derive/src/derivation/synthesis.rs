@@ -3,14 +3,19 @@ use super::*;
 impl ContextDerivation {
     /// Synthesize code for a derivation
     pub(crate) fn synthesize(&self, result: &mut TokenStream2) {
-        let ty = &self.rel.ty;
+        let ty = &self.ty;
         let ctx = &self.rel.ctx;
+
+        let (impl_generics, _, where_) = self.generics.split_for_impl();
+
         if let Some(bounds) = &self.rel.bounds.partial_eq {
-            let clause = &bounds.clause;
-            let generics = &bounds.generics;
+            let mut clause = bounds.clause.clone();
+            if let Some(where_) = where_ {
+                clause.predicates.extend(where_.predicates.iter().cloned())
+            }
             let imp = self.synthesize_binary_trait_impl(BinaryTrait::PartialEq);
             result.extend(quote! {
-                impl #generics ::equivalence::PartialEqWith<#ctx> for #ty #clause {
+                impl #impl_generics ::equivalence::PartialEqWith<#ctx> for #ty #clause {
                     fn eq_with(&self, other: &Self, ctx: &#ctx) -> bool {
                         #imp
                     }
@@ -18,19 +23,23 @@ impl ContextDerivation {
             })
         }
         if let Some(bounds) = &self.rel.bounds.eq {
-            let clause = &bounds.clause;
-            let generics = &bounds.generics;
+            let mut clause = bounds.clause.clone();
+            if let Some(where_) = where_ {
+                clause.predicates.extend(where_.predicates.iter().cloned())
+            }
             result.extend(quote! {
-                impl #generics ::equivalence::EqWith<#ctx> for #ty #clause {}
+                impl #impl_generics ::equivalence::EqWith<#ctx> for #ty #clause {}
             })
         }
         //TODO: implement delegate partial_cmp optimization...
         if let Some(bounds) = &self.rel.bounds.partial_ord {
-            let clause = &bounds.clause;
-            let generics = &bounds.generics;
+            let mut clause = bounds.clause.clone();
+            if let Some(where_) = where_ {
+                clause.predicates.extend(where_.predicates.iter().cloned())
+            }
             let imp = self.synthesize_binary_trait_impl(BinaryTrait::PartialOrd);
             result.extend(quote! {
-                impl #generics ::equivalence::PartialOrdWith<#ctx> for #ty #clause {
+                impl #impl_generics ::equivalence::PartialOrdWith<#ctx> for #ty #clause {
                     fn partial_cmp_with(&self, other: &Self, ctx: &#ctx) -> Option<::core::cmp::Ordering> {
                         #imp
                     }
@@ -38,11 +47,13 @@ impl ContextDerivation {
             });
         }
         if let Some(bounds) = &self.rel.bounds.ord {
-            let clause = &bounds.clause;
-            let generics = &bounds.generics;
+            let mut clause = bounds.clause.clone();
+            if let Some(where_) = where_ {
+                clause.predicates.extend(where_.predicates.iter().cloned())
+            }
             let imp = self.synthesize_binary_trait_impl(BinaryTrait::Ord);
             result.extend(quote! {
-                impl #generics ::equivalence::OrdWith<#ctx> for #ty #clause {
+                impl #impl_generics ::equivalence::OrdWith<#ctx> for #ty #clause {
                     fn cmp_with(&self, other: &Self, ctx: &#ctx) -> ::core::cmp::Ordering {
                         #imp
                     }
@@ -50,11 +61,13 @@ impl ContextDerivation {
             })
         }
         if let Some(bounds) = &self.rel.bounds.hash {
-            let clause = &bounds.clause;
-            let generics = &bounds.generics;
+            let mut clause = bounds.clause.clone();
+            if let Some(where_) = where_ {
+                clause.predicates.extend(where_.predicates.iter().cloned())
+            }
             let imp = self.synthesize_hash_impl();
             result.extend(quote! {
-                impl #generics ::equivalence::HashWith<#ctx> for #ty #clause {
+                impl #impl_generics ::equivalence::HashWith<#ctx> for #ty #clause {
                     fn hash_with<H: ::core::hash::Hasher>(&self, hasher: &mut H, ctx: &#ctx) {
                         use ::core::hash::Hash;
                         #imp

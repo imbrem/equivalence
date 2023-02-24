@@ -721,5 +721,3 @@ macro_rules! delegate_equiv {
         $crate::delegate_hash_with!($ty);
     };
 }
-
-delegate_equiv!(());

@@ -6,6 +6,9 @@ pub struct CtxA;
 pub struct CtxB;
 
 #[derive(Equivalence)]
+pub struct Container<T>(#[equiv(fwd)] T, T);
+
+#[derive(Equivalence)]
 #[equiv(rel(name = "CtxA"))]
 #[equiv(rel = "CtxB")]
 

@@ -1,4 +1,8 @@
-use syn::{Generics, Index, Member};
+use darling::{
+    usage::{IdentSet, Purpose, UsesTypeParams},
+    ToTokens,
+};
+use syn::{token::Comma, Generics, Index, Member, TypeParam};
 
 use super::*;
 
@@ -11,27 +15,47 @@ pub(crate) struct EquivalenceDerivation {
     pub(crate) base_fwds: Fwds,
     pub(crate) data: Data<VariantOpts, FieldOpts>,
     pub(crate) ident: Ident,
+    pub(crate) generics: Generics,
+    pub(crate) type_set: IdentSet,
 }
 
 impl EquivalenceDerivation {
     fn context_derivations(&mut self) -> impl Iterator<Item = ContextDerivation> + '_ {
-        self.rels.drain().map(|(name, rel)| {
+        self.rels.drain().map(|(name, mut rel)| {
             let curr_desc = self
                 .base_fwds
                 .element_desc(&name, &FwdMethods::all_delegate())
                 .into_owned();
 
-            //TODO: add generic clause synthesis...
             let data = self
                 .data
                 .as_ref()
-                .map_enum_variants(|v| v.parse_to_desc(&name, &curr_desc))
-                .map_struct_fields(|f| f.parse_to_desc(&name, &curr_desc));
+                .map_enum_variants(|v| {
+                    let desc = v.parse_to_desc(&name, &curr_desc);
+                    desc.infer_bounds(&mut rel.bounds, &self.type_set, &rel.ctx);
+                    desc
+                })
+                .map_struct_fields(|f| {
+                    let desc = f.parse_to_desc(&name, &curr_desc);
+                    desc.infer_bounds(&mut rel.bounds, &self.type_set, &rel.ctx);
+                    desc
+                });
+
+            let mut generics = self.generics.clone();
+            let (_, ty_generics, _) = generics.split_for_impl();
+            let ident = self.ident.clone();
+            let ty = syn::parse_quote!(#ident #ty_generics);
+
+            for param in &rel.params {
+                generics.params.push(param.clone().into())
+            }
 
             ContextDerivation {
-                ident: self.ident.clone(),
+                ident,
+                ty,
                 rel,
                 data,
+                generics,
             }
         })
     }
@@ -46,8 +70,8 @@ impl EquivalenceDerivation {
 #[derive(Debug, Clone)]
 pub(crate) struct RelDesc {
     pub(crate) ctx: Type,
-    pub(crate) ty: Type,
     pub(crate) bounds: EquivalenceBounds,
+    pub(crate) params: Punctuated<TypeParam, Comma>,
 }
 
 #[derive(Debug, Clone)]
@@ -62,7 +86,6 @@ pub(crate) struct EquivalenceBounds {
 #[derive(Debug, Clone)]
 pub(crate) struct ImplBounds {
     pub(crate) clause: WhereClause,
-    pub(crate) generics: Generics,
     pub(crate) infer: bool,
 }
 
@@ -75,13 +98,16 @@ pub(crate) struct Fwds {
 #[derive(Debug)]
 pub(crate) struct ContextDerivation {
     ident: Ident,
+    ty: Type,
     rel: RelDesc,
     data: Data<VariantDesc, FieldDesc>,
+    generics: Generics,
 }
 
 #[derive(Debug, Clone)]
 struct FieldDesc {
     ident: Option<Ident>,
+    ty: Type,
     fwd: FwdMethods,
 }
 
@@ -91,7 +117,14 @@ impl FieldOpts {
         FieldDesc {
             ident: self.ident.clone(),
             fwd: self.fwds.element_desc(name, curr_desc).into_owned(),
+            ty: self.ty.clone(),
         }
+    }
+}
+
+impl FieldDesc {
+    fn infer_bounds(&self, bounds: &mut EquivalenceBounds, type_set: &IdentSet, ctx: &Type) {
+        self.fwd.infer_bounds(&self.ty, bounds, type_set, ctx)
     }
 }
 
@@ -99,6 +132,14 @@ impl FieldOpts {
 struct VariantDesc {
     ident: Ident,
     fields: darling::ast::Fields<FieldDesc>,
+}
+
+impl VariantDesc {
+    fn infer_bounds(&self, bounds: &mut EquivalenceBounds, type_set: &IdentSet, ctx: &Type) {
+        for field in self.fields.iter() {
+            field.infer_bounds(bounds, type_set, ctx)
+        }
+    }
 }
 
 impl VariantOpts {
@@ -121,6 +162,47 @@ pub(crate) struct FwdMethods {
     pub(crate) partial_cmp: Option<FwdMethod>,
     pub(crate) cmp: Option<FwdMethod>,
     pub(crate) hash: Option<FwdMethod>,
+}
+
+impl FwdMethods {
+    fn infer_bounds(
+        &self,
+        ty: &Type,
+        bounds: &mut EquivalenceBounds,
+        type_set: &IdentSet,
+        ctx: &Type,
+    ) {
+        let methods = [
+            (
+                EquivalenceTrait::PartialEqWith,
+                self.eq.as_ref(),
+                bounds.partial_eq.as_mut(),
+            ),
+            (
+                EquivalenceTrait::EqWith,
+                self.eq.as_ref(),
+                bounds.eq.as_mut(),
+            ),
+            (
+                EquivalenceTrait::PartialOrdWith,
+                self.partial_cmp.as_ref(),
+                bounds.partial_ord.as_mut(),
+            ),
+            (
+                EquivalenceTrait::OrdWith,
+                self.cmp.as_ref(),
+                bounds.ord.as_mut(),
+            ),
+            (
+                EquivalenceTrait::HashWith,
+                self.hash.as_ref(),
+                bounds.hash.as_mut(),
+            ),
+        ];
+        for (tr, method, bounds) in methods.into_iter() {
+            method.map(|eq| bounds.map(|bounds| eq.infer_bounds(tr, ty, bounds, type_set, ctx)));
+        }
+    }
 }
 
 impl FwdMethods {
@@ -185,8 +267,6 @@ impl FwdMethods {
         }
         this
     }
-
-    //TODO: fix this...
 }
 
 impl Fwds {
@@ -204,6 +284,46 @@ impl Fwds {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub(crate) enum EquivalenceTrait {
+    PartialEqWith,
+    EqWith,
+    PartialOrdWith,
+    OrdWith,
+    HashWith,
+}
+
+impl ToTokens for EquivalenceTrait {
+    fn to_tokens(&self, tokens: &mut TokenStream2) {
+        match self {
+            EquivalenceTrait::PartialEqWith => {
+                tokens.extend(quote! { ::equivalence::PartialEqWith })
+            }
+            EquivalenceTrait::EqWith => tokens.extend(quote! { ::equivalence::EqWith }),
+            EquivalenceTrait::PartialOrdWith => {
+                tokens.extend(quote! { ::equivalence::PartialOrdWith })
+            }
+            EquivalenceTrait::OrdWith => tokens.extend(quote! { ::equivalence::OrdWith }),
+            EquivalenceTrait::HashWith => tokens.extend(quote! { ::equivalence::HashWith }),
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+struct AssociatedTrait(EquivalenceTrait);
+
+impl ToTokens for AssociatedTrait {
+    fn to_tokens(&self, tokens: &mut TokenStream2) {
+        match self.0 {
+            EquivalenceTrait::PartialEqWith => tokens.extend(quote! { PartialEq }),
+            EquivalenceTrait::EqWith => tokens.extend(quote! { Eq }),
+            EquivalenceTrait::PartialOrdWith => tokens.extend(quote! { PartialOrd }),
+            EquivalenceTrait::OrdWith => tokens.extend(quote! { Ord }),
+            EquivalenceTrait::HashWith => tokens.extend(quote! { ::core::hash::Hash }),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) enum FwdMethod {
     Ignore,
@@ -213,6 +333,39 @@ pub(crate) enum FwdMethod {
     Map(Expr),
     MapRec(Expr),
     WithFn(Expr),
+}
+
+impl FwdMethod {
+    fn infer_bounds(
+        &self,
+        tr: EquivalenceTrait,
+        ty: &Type,
+        bounds: &mut ImplBounds,
+        type_set: &IdentSet,
+        ctx: &Type,
+    ) {
+        if !bounds.infer {
+            return;
+        }
+        // NOTE: we do not infer for map/maprec by default!
+        match self {
+            FwdMethod::Rec => {
+                for ty in ty.uses_type_params(&Purpose::BoundImpl.into(), type_set) {
+                    bounds
+                        .clause
+                        .predicates
+                        .push(syn::parse_quote!(#ty: #tr<#ctx>))
+                }
+            }
+            FwdMethod::Delegate => {
+                let tr = AssociatedTrait(tr);
+                for ty in ty.uses_type_params(&Purpose::BoundImpl.into(), type_set) {
+                    bounds.clause.predicates.push(syn::parse_quote!(#ty: #tr))
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 pub(crate) fn true_where_clause(span: Span) -> WhereClause {
