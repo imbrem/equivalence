@@ -9,8 +9,8 @@ pub struct CtxB;
 pub struct Container<T>(#[equiv(fwd)] T, T);
 
 #[derive(Equivalence)]
-#[equiv(het)]
-pub struct ContainerHet<T>(#[equiv(fwd)] T, T);
+#[equiv(het = false)]
+pub struct ContainerNotHet<T>(#[equiv(fwd)] T, T);
 
 #[derive(Equivalence)]
 #[equiv(rel(name = "CtxA"))]
@@ -155,4 +155,20 @@ fn m_list() {
     assert!(!x.eq_with(&y, &CtxN(2)));
     assert!(!x.eq_with(&y, &CtxN(3)));
     assert!(!x.eq_with(&y, &CtxN(6)));
+}
+
+#[derive(Equivalence)]
+pub enum GList<T> {
+    Nil,
+    #[equiv(fwd)] Cons(T, Box<GList<T>>),
+}
+
+impl<T: Clone> From<&[T]> for GList<T> {
+    fn from(value: &[T]) -> Self {
+        if value.len() == 0 {
+            GList::Nil
+        } else {
+            GList::Cons(value[0].clone(), Box::new((&value[1..]).into()))
+        }
+    }
 }

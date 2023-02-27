@@ -35,7 +35,7 @@ pub(crate) struct EquivalenceOptsParser {
 
 impl FromDeriveInput for EquivalenceDerivation {
     fn from_derive_input(input: &syn::DeriveInput) -> darling::Result<Self> {
-        const DEFAULT_HET: bool = false;
+        const DEFAULT_HET: bool = true;
 
         let mut hasher = FnvHasher::default();
         input.hash(&mut hasher);
@@ -443,7 +443,7 @@ impl FromField for FieldOpts {
 }
 
 #[derive(Debug, Clone, FromVariant)]
-#[darling(attributes(fwd))]
+#[darling(attributes(equiv))]
 struct VariantOptsParser {
     ident: Ident,
     #[darling(multiple)]
