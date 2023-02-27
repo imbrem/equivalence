@@ -27,34 +27,338 @@ use either::{for_both, Either};
 #[cfg(feature = "derive")]
 pub use equivalence_derive::Equivalence;
 
-/// Values equipped with a partial equivalence relation modulo a context of type `C`
+/// Trait for equality comparisons modulo a context of type `C`.
+///
+/// # Example
+/// ```
+/// # use equivalence::*;
+/// struct Person<'a> {
+///     name: &'a str,
+///     age: u8,
+/// }
+///
+/// struct ByAge;
+/// struct ByName;
+///
+/// impl<'a> PartialEqWith<ByAge, Self> for Person<'a> {
+///     fn eq_with(&self, other: &Self, _: &ByAge) -> bool {
+///         self.age == other.age
+///     }
+/// }
+///
+/// impl<'a> PartialEqWith<ByName, Self> for Person<'a> {
+///     fn eq_with(&self, other: &Self, _: &ByName) -> bool {
+///         self.name == other.name
+///     }
+/// }
+///
+/// let alice = Person { name: "Alice", age: 25 };
+/// let bob = Person { name: "Bob", age: 25 };
+/// assert!(alice.eq_with(&bob, &ByAge));
+/// assert!(!alice.ne_with(&bob, &ByAge));
+/// assert!(!alice.eq_with(&bob, &ByName));
+/// assert!(alice.ne_with(&bob, &ByName));
+/// ```
 pub trait PartialEqWith<C: ?Sized, T: ?Sized = Self> {
-    /// Check whether `self` and `other` are equal modulo the context `ctx`
+    /// Check whether `self` and `other` are equal modulo the context `ctx`.
+    ///
+    /// Returns a `bool` indicating whether `self` and `other` are equal modulo the context `ctx`.
     fn eq_with(&self, other: &T, ctx: &C) -> bool;
-    /// Check whether `self` and `other` are disequal modulo the context `ctx`
+    /// Check whether `self` and `other` are disequal modulo the context `ctx`.
+    ///
+    /// Returns a `bool` indicating whether `self` and `other` are disequal modulo the context `ctx`.
+    ///
+    /// This method is equivalent to `!self.eq_with(other, ctx)`. In general, there is no need to
+    /// manually implement this method, as it can always be derived from `eq_with`.
+    #[inline(always)]
     fn ne_with(&self, other: &T, ctx: &C) -> bool {
         !self.eq_with(other, ctx)
     }
 }
 
-/// Values equipped with an equivalence relation modulo contexts of type `C`
+/// Trait for equality comparisons modulo a context of type `C` which are equivalence relations.
+///
+/// This means that for any fixed `ctx: &C`, for all `a, b, c`, the `eq_with` relation is
+/// - reflexive: `a.eq_with(a, ctx)`
+/// - symmetric: `a.eq_with(b, ctx)` implies `b.eq_with(a, ctx)`
+/// - transitive: `a.eq_with(b, ctx)` and `b.eq_with(c, ctx)` implies `a.eq_with(c, ctx)`
 pub trait EqWith<C: ?Sized>: PartialEqWith<C> {}
 
-/// Values equipped with a partial ordering modulo a context of type `C`
+/// Trait for types that form a partial order modulo a context of type `C`
+///
+/// Example
+/// ```
+/// # use equivalence::*;
+/// # use std::cmp::Ordering;
+/// /// A simple struct representing a set of boolean flags.
+/// struct Flags(u8);
+///
+/// impl PartialOrdWith<Mask> for Flags {
+///     /// Compare `self` and `other` modulo the context `ctx`.
+///     /// One object is less than another if it has strictly less flags set;
+///     /// two objects are incomparable if they have different flags set.
+///     fn partial_cmp_with(&self, other: &Self, ctx: &Mask) -> Option<Ordering> {
+///         // Get the masked flags for both self and other.
+///         let self_masked = self.0 & ctx.0;
+///         let other_masked = other.0 & ctx.0;
+///
+///         // Get the flags that are in self but not in other, and vice versa.
+///         let self_not_other = self_masked & !other_masked;
+///         let other_not_self = other_masked & !self_masked;
+///         // Compare the sets of flags.
+///         if self_not_other == 0 {
+///             if other_not_self == 0 {
+///                 // If the sets of flags are equal, the objects are equal.
+///                 Some(Ordering::Equal)
+///             } else {
+///                 // If other has more flags set than self, self is less than other.
+///                 Some(Ordering::Less)
+///             }
+///         } else if other_not_self == 0 {
+///             // If self has more flags set than other, self is greater than other.
+///             Some(Ordering::Greater)
+///         } else {
+///             // If self and other have different flags set, they are incomparable.
+///             None
+///         }
+///     }
+/// }
+///
+/// impl PartialEqWith<Mask> for Flags {
+///     fn eq_with(&self, other: &Self, ctx: &Mask) -> bool {
+///         (self.0 & ctx.0) == (other.0 & ctx.0)
+///     }
+/// }
+///
+/// /// A simple struct representing a bitmask.
+/// struct Mask(u8);
+///
+/// let a = Flags(0b001);
+/// let b = Flags(0b010);
+/// let c = Flags(0b011);
+/// let d = Flags(0b100);
+/// let ctx = Mask(0b011);
+///
+/// assert_eq!(a.partial_cmp_with(&b, &ctx), None);
+/// assert_eq!(a.partial_cmp_with(&c, &ctx), Some(Ordering::Less));
+/// assert_eq!(c.partial_cmp_with(&a, &ctx), Some(Ordering::Greater));
+/// assert_eq!(a.partial_cmp_with(&d, &ctx), Some(Ordering::Greater));
+/// assert_eq!(d.partial_cmp_with(&a, &ctx), Some(Ordering::Less));
+/// ```
 pub trait PartialOrdWith<C: ?Sized, T: ?Sized = Self>: PartialEqWith<C, T> {
     /// Compare `self` and `other` modulo the context `ctx`
+    ///
+    /// Returns `Some(Ordering)` if `self` is less than, equal to, or greater than `other`, and
+    /// `None` if they are incomparable.
     fn partial_cmp_with(&self, other: &T, ctx: &C) -> Option<Ordering>;
+
+    /// Returns `true` if `self` is greater than or equal to `other` modulo the context `ctx`.
+    ///
+    /// This must be equivalent to `self.partial_cmp_with(other, ctx) >= Some(Ordering::Equal)`.
+    #[inline(always)]
+    fn ge_with(&self, other: &T, ctx: &C) -> bool {
+        matches!(
+            self.partial_cmp_with(other, ctx),
+            Some(Ordering::Greater) | Some(Ordering::Equal)
+        )
+    }
+
+    /// Returns `true` if `self` is strictly greater than `other` modulo the context `ctx`.
+    ///
+    /// This must be equivalent to `self.partial_cmp_with(other, ctx) == Some(Ordering::Greater)`
+    #[inline(always)]
+    fn gt_with(&self, other: &T, ctx: &C) -> bool {
+        self.partial_cmp_with(other, ctx) == Some(Ordering::Greater)
+    }
+
+    /// Returns `true` if `self` is less than or equal to `other` modulo the context `ctx`.
+    ///
+    /// This must be equivalent to `self.partial_cmp_with(other, ctx) <= Some(Ordering::Equal)`
+    #[inline(always)]
+    fn le_with(&self, other: &T, ctx: &C) -> bool {
+        matches!(
+            self.partial_cmp_with(other, ctx),
+            Some(Ordering::Less) | Some(Ordering::Equal)
+        )
+    }
+
+    /// Returns `true` if `self` is strictly less than `other` modulo the context `ctx`.
+    ///
+    /// This must be equivalent to `self.partial_cmp_with(other, ctx) == Some(Ordering::Less)`
+    #[inline(always)]
+    fn lt_with(&self, other: &T, ctx: &C) -> bool {
+        self.partial_cmp_with(other, ctx) == Some(Ordering::Less)
+    }
 }
 
-/// Values equipped with an ordering modulo contexts of type `C`
+/// Trait for types that form a total order modulo a context of type `C`
+///
+/// # Examples
+///
+/// ```
+/// # use equivalence::*;
+/// # use std::cmp::Ordering;
+/// struct Person {
+///     name: String,
+///     age: u32,
+/// }
+///
+/// enum PersonField { Name, Age }
+///
+/// impl OrdWith<PersonField> for Person {
+///     fn cmp_with(&self, other: &Self, ctx: &PersonField) -> Ordering {
+///         match ctx {
+///             PersonField::Name => self.name.cmp(&other.name),
+///             PersonField::Age => self.age.cmp(&other.age),
+///         }
+///     }
+/// }
+/// 
+/// impl PartialOrdWith<PersonField> for Person {
+///     fn partial_cmp_with(&self, other: &Self, ctx: &PersonField) -> Option<Ordering> {
+///         Some(self.cmp_with(other, ctx))
+///     }
+/// }
+/// 
+/// impl PartialEqWith<PersonField> for Person {
+///     fn eq_with(&self, other: &Self, ctx: &PersonField) -> bool {
+///         match ctx {
+///             PersonField::Name => self.name == other.name,
+///             PersonField::Age => self.age == other.age,
+///         }
+///     }
+/// }
+///
+/// impl EqWith<PersonField> for Person {}
+/// 
+/// let alice = Person { age: 30, name: "Alice".to_string() };
+/// let bob = Person { age: 25, name: "Bob".to_string() };
+/// assert_eq!(alice.cmp_with(&bob, &PersonField::Name), Ordering::Less);
+/// assert_eq!(alice.cmp_with(&bob, &PersonField::Age), Ordering::Greater);
+/// ```
 pub trait OrdWith<C: ?Sized>: PartialOrdWith<C, Self> + EqWith<C> {
-    /// Compare `self` and `other` modulo the context `ctx`
+    /// Compare `self` and `other` modulo the context `ctx`.
+    ///
+    /// Returns `Ordering::Less` if `self` is less than `other`, `Ordering::Equal` if they are
+    /// equal, and `Ordering::Greater` if `self` is greater than `other`.
+    ///
+    /// This must be equivalent to calling `self.partial_cmp_with(other, ctx).unwrap()`
     fn cmp_with(&self, other: &Self, ctx: &C) -> Ordering;
+
+    #[inline]
+    /// Returns the maximum of `self` and `other` modulo the context `ctx`.
+    fn max_with(self, other: Self, ctx: &C) -> Self
+    where
+        Self: Sized,
+    {
+        if self.ge_with(&other, ctx) {
+            self
+        } else {
+            other
+        }
+    }
+
+    #[inline]
+    /// Returns the minimum of `self` and `other` modulo the context `ctx`.
+    fn min_with(self, other: Self, ctx: &C) -> Self
+    where
+        Self: Sized,
+    {
+        if self.le_with(&other, ctx) {
+            self
+        } else {
+            other
+        }
+    }
+
+    /// Clamps `self` to the interval `[min, max]` modulo the context `ctx`.
+    ///
+    /// If `self` is less than `min`, this returns `min`. If `self` is greater than `max`, this
+    /// returns `max`. Otherwise, this returns `self`.
+    ///
+    /// The result value is unspecified if `min > max`; this is in contrast to the standard
+    /// library's [`Ord::clamp`], which is guaranteed to panic.
+    #[inline]
+    fn clamp_with(self, min: Self, max: Self, ctx: &C) -> Self
+    where
+        Self: Sized,
+    {
+        if self.le_with(&max, ctx) {
+            if self.ge_with(&min, ctx) {
+                self
+            } else {
+                min
+            }
+        } else {
+            max
+        }
+    }
 }
 
-/// Values which can be hashed modulo a context of type `C`
+/// A type which can be hashed modulo a context of type `C`
 ///
 /// If `PartialEqWith<C, T>` is implemented, it is expected that equivalent values have the same hashing behaviour.
+/// 
+/// # Example
+/// ```
+/// # use equivalence::{HashWith, EqWith};
+/// # use std::collections::hash_map::DefaultHasher;
+/// # use std::hash::{Hash, Hasher};
+///
+/// #[derive(Debug)]
+/// struct Person {
+///     name: String,
+///     age: u32,
+/// }
+///
+/// enum PersonField {
+///     Name,
+///     Age,
+/// }
+///
+/// impl HashWith<PersonField> for Person {
+///     fn hash_with<H: Hasher>(&self, hasher: &mut H, ctx: &PersonField) {
+///         match ctx {
+///             PersonField::Name => self.name.hash(hasher),
+///             PersonField::Age => self.age.hash(hasher),
+///         }
+///     }
+/// }
+///
+/// let alice1 = Person { age: 30, name: "Alice".to_string() };
+/// let alice2 = Person { age: 35, name: "Alice".to_string() };
+/// let bob = Person { age: 30, name: "Bob".to_string() };
+///
+/// let mut hasher = DefaultHasher::new();
+/// alice1.hash_with(&mut hasher, &PersonField::Name);
+/// let alice1_name = hasher.finish();
+///
+/// let mut hasher = DefaultHasher::new();
+/// alice2.hash_with(&mut hasher, &PersonField::Name);
+/// let alice2_name = hasher.finish();
+///
+/// let mut hasher = DefaultHasher::new();
+/// bob.hash_with(&mut hasher, &PersonField::Name);
+/// let bob_name = hasher.finish();
+/// 
+/// assert_eq!(alice1_name, alice2_name);
+/// assert_ne!(alice1_name, bob_name);
+/// 
+/// let mut hasher = DefaultHasher::new();
+/// alice1.hash_with(&mut hasher, &PersonField::Age);
+/// let alice1_age = hasher.finish();
+///
+/// let mut hasher = DefaultHasher::new();
+/// alice2.hash_with(&mut hasher, &PersonField::Age);
+/// let alice2_age = hasher.finish();
+///
+/// let mut hasher = DefaultHasher::new();
+/// bob.hash_with(&mut hasher, &PersonField::Age);
+/// let bob_age = hasher.finish();
+/// 
+/// assert_ne!(alice1_age, alice2_age);
+/// assert_eq!(alice1_age, bob_age);
+/// ```
 pub trait HashWith<C: ?Sized, T: ?Sized = Self> {
     /// Hash `self` modulo the context `ctx`
     fn hash_with<H: Hasher>(&self, hasher: &mut H, ctx: &C);
