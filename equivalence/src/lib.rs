@@ -266,13 +266,13 @@ pub trait PartialOrdWith<C: ?Sized, T: ?Sized = Self>: PartialEqWith<C, T> {
 ///         }
 ///     }
 /// }
-/// 
+///
 /// impl PartialOrdWith<PersonField> for Person {
 ///     fn partial_cmp_with(&self, other: &Self, ctx: &PersonField) -> Option<Ordering> {
 ///         Some(self.cmp_with(other, ctx))
 ///     }
 /// }
-/// 
+///
 /// impl PartialEqWith<PersonField> for Person {
 ///     fn eq_with(&self, other: &Self, ctx: &PersonField) -> bool {
 ///         match ctx {
@@ -283,7 +283,7 @@ pub trait PartialOrdWith<C: ?Sized, T: ?Sized = Self>: PartialEqWith<C, T> {
 /// }
 ///
 /// impl EqWith<PersonField> for Person {}
-/// 
+///
 /// let alice = Person { age: 30, name: "Alice".to_string() };
 /// let bob = Person { age: 25, name: "Bob".to_string() };
 /// assert_eq!(alice.cmp_with(&bob, &PersonField::Name), Ordering::Less);
@@ -351,7 +351,7 @@ pub trait OrdWith<C: ?Sized>: PartialOrdWith<C, Self> + EqWith<C> {
 /// A type which can be hashed modulo a context of type `C`
 ///
 /// If `PartialEqWith<C, T>` is implemented, it is expected that equivalent values have the same hashing behaviour.
-/// 
+///
 /// # Example
 /// ```
 /// # use equivalence::{HashWith, EqWith};
@@ -393,10 +393,10 @@ pub trait OrdWith<C: ?Sized>: PartialOrdWith<C, Self> + EqWith<C> {
 /// let mut hasher = DefaultHasher::new();
 /// bob.hash_with(&mut hasher, &PersonField::Name);
 /// let bob_name = hasher.finish();
-/// 
+///
 /// assert_eq!(alice1_name, alice2_name);
 /// assert_ne!(alice1_name, bob_name);
-/// 
+///
 /// let mut hasher = DefaultHasher::new();
 /// alice1.hash_with(&mut hasher, &PersonField::Age);
 /// let alice1_age = hasher.finish();
@@ -408,7 +408,7 @@ pub trait OrdWith<C: ?Sized>: PartialOrdWith<C, Self> + EqWith<C> {
 /// let mut hasher = DefaultHasher::new();
 /// bob.hash_with(&mut hasher, &PersonField::Age);
 /// let bob_age = hasher.finish();
-/// 
+///
 /// assert_ne!(alice1_age, alice2_age);
 /// assert_eq!(alice1_age, bob_age);
 /// ```
@@ -990,5 +990,155 @@ where
     fn hash_with<H: Hasher>(&self, hasher: &mut H, ctx: &C) {
         self.0.hash_with(hasher, ctx);
         self.1.hash_with(hasher, ctx);
+    }
+}
+
+impl<A1, B1, C1, A2, B2, C2, X> PartialEqWith<X, (A2, B2, C2)> for (A1, B1, C1)
+where
+    A1: PartialEqWith<X, A2>,
+    B1: PartialEqWith<X, B2>,
+    C1: PartialEqWith<X, C2>,
+{
+    #[inline]
+    fn eq_with(&self, other: &(A2, B2, C2), ctx: &X) -> bool {
+        self.0.eq_with(&other.0, ctx)
+            && self.1.eq_with(&other.1, ctx)
+            && self.2.eq_with(&other.2, ctx)
+    }
+}
+
+impl<A, B, C, X> EqWith<X> for (A, B, C)
+where
+    A: EqWith<X>,
+    B: EqWith<X>,
+    C: EqWith<X>,
+{
+}
+
+impl<A1, B1, C1, A2, B2, C2, X> PartialOrdWith<X, (A2, B2, C2)> for (A1, B1, C1)
+where
+    A1: PartialOrdWith<X, A2>,
+    B1: PartialOrdWith<X, B2>,
+    C1: PartialOrdWith<X, C2>,
+{
+    #[inline]
+    fn partial_cmp_with(&self, other: &(A2, B2, C2), ctx: &X) -> Option<Ordering> {
+        match self.0.partial_cmp_with(&other.0, ctx) {
+            Some(Ordering::Equal) => {}
+            o => return o,
+        }
+        self.1.partial_cmp_with(&other.1, ctx)
+    }
+}
+
+impl<A, B, C, X> OrdWith<X> for (A, B, C)
+where
+    A: OrdWith<X>,
+    B: OrdWith<X>,
+    C: OrdWith<X>,
+{
+    #[inline]
+    fn cmp_with(&self, other: &(A, B, C), ctx: &X) -> Ordering {
+        self.0
+            .cmp_with(&other.0, ctx)
+            .then_with(|| self.1.cmp_with(&other.1, ctx))
+            .then_with(|| self.2.cmp_with(&other.2, ctx))
+    }
+}
+
+impl<A, B, C, X> HashWith<X> for (A, B, C)
+where
+    A: HashWith<X>,
+    B: HashWith<X>,
+    C: HashWith<X>,
+{
+    #[inline]
+    fn hash_with<H: Hasher>(&self, hasher: &mut H, ctx: &X) {
+        self.0.hash_with(hasher, ctx);
+        self.1.hash_with(hasher, ctx);
+        self.2.hash_with(hasher, ctx);
+    }
+}
+
+impl<A1, B1, C1, D1, A2, B2, C2, D2, X> PartialEqWith<X, (A2, B2, C2, D2)> for (A1, B1, C1, D1)
+where
+    A1: PartialEqWith<X, A2>,
+    B1: PartialEqWith<X, B2>,
+    C1: PartialEqWith<X, C2>,
+    D1: PartialEqWith<X, D2>,
+{
+    #[inline]
+    fn eq_with(&self, other: &(A2, B2, C2, D2), ctx: &X) -> bool {
+        self.0.eq_with(&other.0, ctx)
+            && self.1.eq_with(&other.1, ctx)
+            && self.2.eq_with(&other.2, ctx)
+            && self.3.eq_with(&other.3, ctx)
+    }
+}
+
+impl<A, B, C, D, X> EqWith<X> for (A, B, C, D)
+where
+    A: EqWith<X>,
+    B: EqWith<X>,
+    C: EqWith<X>,
+    D: EqWith<X>,
+{
+}
+
+impl<A1, B1, C1, D1, A2, B2, C2, D2, X> PartialOrdWith<X, (A2, B2, C2, D2)> for (A1, B1, C1, D1)
+where
+    A1: PartialOrdWith<X, A2>,
+    B1: PartialOrdWith<X, B2>,
+    C1: PartialOrdWith<X, C2>,
+    D1: PartialOrdWith<X, D2>,
+{
+    #[inline]
+    fn partial_cmp_with(&self, other: &(A2, B2, C2, D2), ctx: &X) -> Option<Ordering> {
+        match self.0.partial_cmp_with(&other.0, ctx) {
+            Some(Ordering::Equal) => {}
+            o => return o,
+        }
+        match self.1.partial_cmp_with(&other.1, ctx) {
+            Some(Ordering::Equal) => {}
+            o => return o,
+        }
+        match self.2.partial_cmp_with(&other.2, ctx) {
+            Some(Ordering::Equal) => {}
+            o => return o,
+        }
+        self.3.partial_cmp_with(&other.3, ctx)
+    }
+}
+
+impl<A, B, C, D, X> OrdWith<X> for (A, B, C, D)
+where
+    A: OrdWith<X>,
+    B: OrdWith<X>,
+    C: OrdWith<X>,
+    D: OrdWith<X>,
+{
+    #[inline]
+    fn cmp_with(&self, other: &(A, B, C, D), ctx: &X) -> Ordering {
+        self.0
+            .cmp_with(&other.0, ctx)
+            .then_with(|| self.1.cmp_with(&other.1, ctx))
+            .then_with(|| self.2.cmp_with(&other.2, ctx))
+            .then_with(|| self.3.cmp_with(&other.3, ctx))
+    }
+}
+
+impl<A, B, C, D, X> HashWith<X> for (A, B, C, D)
+where
+    A: HashWith<X>,
+    B: HashWith<X>,
+    C: HashWith<X>,
+    D: HashWith<X>,
+{
+    #[inline]
+    fn hash_with<H: Hasher>(&self, hasher: &mut H, ctx: &X) {
+        self.0.hash_with(hasher, ctx);
+        self.1.hash_with(hasher, ctx);
+        self.2.hash_with(hasher, ctx);
+        self.3.hash_with(hasher, ctx);
     }
 }
