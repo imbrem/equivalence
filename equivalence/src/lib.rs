@@ -66,7 +66,6 @@ struct U32Pair {
 assert!(U32Pair { left: 3, right: 5 }.eq_with(&U32Pair { left: 5, right: 7 }, &ModN(2)));
 assert!(U32Pair { left: 3, right: 5 }.ne_with(&U32Pair { left: 5, right: 7 }, &ModN(3)));
 ```
-
 */
 #![forbid(unsafe_code, missing_docs, missing_debug_implementations)]
 
