@@ -12,7 +12,7 @@ readme = "../README.md"
 
 [dependencies]
 either = "1.8.1"
-equivalence-derive = { path = "../equivalence-derive", optional = true }
+equivalence-derive = { version = "0.1.0", path = "../equivalence-derive", optional = true }
 
 [features]
 default = ["derive"]
