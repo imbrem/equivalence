@@ -1,10 +1,10 @@
 # equivalence
 
-![Version](https://img.shields.io/crates/v/equivalence)
-![Documentation](https://img.shields.io/docsrs/equivalence)
-![Build](https://img.shields.io/github/actions/workflow/status/imbrem/equivalence/rust.yml)
-![License](https://img.shields.io/crates/l/equivalence/0.1.0)
-![Downloads](https://img.shields.io/crates/d/equivalence)
+[![Version](https://img.shields.io/crates/v/equivalence)](https://crates.io/crates/equivalence)
+[![Documentation](https://img.shields.io/docsrs/equivalence)](https://docs.rs/equivalence/latest/equivalence/)
+[![Build](https://img.shields.io/github/actions/workflow/status/imbrem/equivalence/rust.yml)](https://github.com/imbrem/equivalence/actions)
+[![License](https://img.shields.io/crates/l/equivalence/0.1.0)](https://crates.io/crates/equivalence)
+[![Downloads](https://img.shields.io/crates/d/equivalence)](https://crates.io/crates/equivalence)
 
 This crate provides traits for comparing and hashing values modulo an equivalence relation specified by a context of user-defined type `C`.
 The `Equivalence` derive macro allows the user to easily implement `Equivalence` for custom types.
