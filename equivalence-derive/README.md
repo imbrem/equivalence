@@ -6,4 +6,11 @@
 ![License](https://img.shields.io/crates/l/equivalence-derive/0.1.0)
 ![Downloads](https://img.shields.io/crates/d/equivalence-derive)
 
-This crate contains the implementation of `#[derive(Equivalence)]` for the [`equivalence`](https://crates.io/crates/equivalence) crate.
+**Important Note**:
+
+* You are probably looking for the [`equivalence`](https://docs.rs/equivalence/) crate, which wraps this crate and is much more ergonomic to use.
+
+Purpose
+-------
+
+This is an internal helper library of [`equivalence`](https://docs.rs/equivalence/), containing the derive macro for `#[derive(Equivalence)]`
