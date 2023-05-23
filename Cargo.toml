@@ -1,6 +1,6 @@
 [package]
 name = "equivalence"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Jad Ghalayini <jeg74@cl.cam.ac.uk>"]
 description = "Trait and derive macro for comparing and hashing types modulo an equivalence relation"

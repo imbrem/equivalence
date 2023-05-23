@@ -1,0 +1,12 @@
+# Changelog
+
+## [0.1.1] -- 2023-05-23
+
+- Added: `delegate_*` family of macros for contexts 
+
+## [0.1.0] -- 2023-03-07
+
+The initial release of `equivalence`, which provides a derive macro to help in implementing comparisons modulo a context.
+
+[0.1.1]: https://github.com/imbrem/equivalence/releases/tag/v0.1.0
+[0.1.0]: https://github.com/imbrem/equivalence/releases/tag/v0.1.0

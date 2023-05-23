@@ -71,3 +71,11 @@ struct U32Pair {
 assert!(U32Pair { left: 3, right: 5 }.eq_with(&U32Pair { left: 5, right: 7 }, &ModN(2)));
 assert!(U32Pair { left: 3, right: 5 }.ne_with(&U32Pair { left: 5, right: 7 }, &ModN(3)));
 ```
+
+# Planned Features
+
+The crate is currently quite minimal, but we plan to add:
+- Support for `no_std`
+- Better documentation
+- Extra forwarding options, such as forwarding to `Deref`
+- Support for comparing collections other than arrays (which are already supported)

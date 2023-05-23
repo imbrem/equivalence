@@ -12,7 +12,10 @@ use either::{for_both, Either};
 #[cfg(feature = "derive")]
 pub use equivalence_derive::Equivalence;
 
-/// Trait for equality comparisons modulo a context of type `C`.
+mod macros;
+pub use macros::*;
+
+/// Trait for equality comparisons modulo a context of type `C`
 ///
 /// # Example
 /// ```
